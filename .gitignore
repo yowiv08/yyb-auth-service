@@ -1,0 +1,11 @@
+/runtime/
+/.gocache/
+/.agents/
+/.claude/
+*.db
+*.db-*
+*.log
+*.exe
+*.out
+*.test
+coverage.out

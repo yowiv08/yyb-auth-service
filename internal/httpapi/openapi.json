@@ -1,0 +1,2048 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "yyb-auth-service API",
+    "description": "应用宝扫码登录、账号管理、微信用户资料、小程序 code、公众号网页授权、手机号、operateWXData 和通用 Transfer 服务。",
+    "version": "2.0.0"
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "当前服务"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Users",
+      "description": "用户列表"
+    },
+    {
+      "name": "Code",
+      "description": "同步获取小程序 code"
+    },
+    {
+      "name": "OperateWXData",
+      "description": "operateWXData 代请求"
+    },
+    {
+      "name": "GetUserInfo",
+      "description": "微信 OAuth 用户资料获取"
+    },
+    {
+      "name": "OAuth",
+      "description": "公众号网页 OAuth2 授权并获取 code"
+    },
+    {
+      "name": "GetPhone",
+      "description": "手机号获取"
+    },
+    {
+      "name": "Transfer",
+      "description": "通用 Transfer 协议调试"
+    },
+    {
+      "name": "Scan",
+      "description": "应用宝扫码登录会话"
+    }
+  ],
+  "paths": {
+    "/api/users": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "获取用户列表",
+        "description": "按首次入库顺序固定返回账号摘要，更新凭据和重扫同一账号不改变顺序，新账号追加在末尾。调用方按 unionid 自行筛选。",
+        "operationId": "listUsers",
+        "responses": {
+          "200": {
+            "description": "用户列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "删除账号",
+        "description": "按 unionid 删除本地账号，保留扫码历史并解除账号关联。",
+        "operationId": "deleteUser",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteUserRequest"
+              },
+              "examples": {
+                "deleteByUnionID": {
+                  "summary": "按 unionid 删除",
+                  "value": {
+                    "unionid": "o_xxx"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "账号已删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteUserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code": {
+      "post": {
+        "tags": [
+          "Code"
+        ],
+        "summary": "同步获取小程序 code",
+        "description": "获取单个 appid 的小程序 code。type=1 为标准取码；type=2 为快速取码。",
+        "operationId": "exchangeCode",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeRequest"
+              },
+              "examples": {
+                "nativeType1": {
+                  "summary": "标准取码",
+                  "value": {
+                    "unionid": "o_xxx",
+                    "appid": "wx7c45a544886d9e69",
+                    "type": 1
+                  }
+                },
+                "pcYybType2": {
+                  "summary": "快速取码",
+                  "value": {
+                    "unionid": "o_xxx",
+                    "appid": "wx7c45a544886d9e69",
+                    "type": 2
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "本次小程序 code 获取结果。status=failed 时错误信息在 error 字段。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/operatewxdata": {
+      "post": {
+        "tags": [
+          "OperateWXData"
+        ],
+        "summary": "通用 operateWXData 代请求",
+        "description": "type 必填。type=1 为 raw 模式，提供完整 operateWXData.data；type=2 为云函数快捷模式，提供 function_name 和云函数入参 data；type=3 为云网关三元组模式，返回 token/key/rid。",
+        "operationId": "operateWXData",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperateWXDataRequest"
+              },
+              "examples": {
+                "rawType1": {
+                  "summary": "raw 模式",
+                  "value": {
+                    "unionid": "o_xxx",
+                    "appid": "wx887bf6ad752ca2f3",
+                    "type": 1,
+                    "operate_code": 1,
+                    "data": {
+                      "api_name": "qbase_commapi",
+                      "data": {},
+                      "operate_directly": false
+                    }
+                  }
+                },
+                "cloudFunctionType2": {
+                  "summary": "云函数快捷模式",
+                  "value": {
+                    "unionid": "o_xxx",
+                    "appid": "wx887bf6ad752ca2f3",
+                    "type": 2,
+                    "operate_code": 1,
+                    "function_name": "rsa",
+                    "data": {
+                      "score": "350|1782791141326"
+                    }
+                  }
+                },
+                "gatewayServiceInfoType3": {
+                  "summary": "云网关三元组模式",
+                  "value": {
+                    "unionid": "o_xxx",
+                    "appid": "wxde7e5cd3f013ff7d",
+                    "type": 3,
+                    "operate_code": 1,
+                    "data": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "operateWXData 执行结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperateWXDataResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/scan": {
+      "post": {
+        "tags": [
+          "Scan"
+        ],
+        "summary": "创建扫码会话",
+        "description": "创建微信扫码登录会话，返回二维码 URL 和本地 scan_id，自动更新扫码状态。Swagger UI 自动显示二维码和最终扫码响应。",
+        "operationId": "createScan",
+        "responses": {
+          "200": {
+            "description": "扫码会话",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanSession"
+                }
+              }
+            }
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "get": {
+        "tags": [
+          "Scan"
+        ],
+        "summary": "查询扫码会话状态",
+        "description": "返回当前扫码会话状态。",
+        "operationId": "getScan",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ScanID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "扫码会话",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/getuserinfo": {
+      "post": {
+        "tags": [
+          "GetUserInfo"
+        ],
+        "summary": "获取微信 OAuth 用户资料",
+        "description": "按 unionid 获取微信 OAuth 用户资料，返回 nickname、headimgurl 等字段。",
+        "operationId": "getUserInfo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetUserInfoRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "获取用户资料",
+                  "value": {
+                    "unionid": "o_xxx",
+                    "lang": "zh_CN"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "用户资料。微信业务失败时 ok=false，错误码在 errcode/errmsg。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/getphone": {
+      "post": {
+        "tags": [
+          "GetPhone"
+        ],
+        "summary": "获取手机号",
+        "description": "按 unionid 和 appid 获取手机号。",
+        "operationId": "getPhoneNumber",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetPhoneRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "获取手机号",
+                  "value": {
+                    "unionid": "o_xxx",
+                    "appid": "wxde7e5cd3f013ff7d"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "获取手机号结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/oauthauthorize": {
+      "post": {
+        "tags": [
+          "OAuth"
+        ],
+        "summary": "公众号网页授权",
+        "description": "提交公众号网页 OAuth2 授权请求，返回授权状态或 code。scope 支持 snsapi_base 和 snsapi_userinfo。",
+        "operationId": "oauthAuthorize",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuthAuthorizeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "授权状态或已取得 code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthAuthorizeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/OAuthBadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/OAuthNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "502": {
+            "$ref": "#/components/responses/OAuthBadGateway"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/oauthconfirm": {
+      "post": {
+        "tags": [
+          "OAuth"
+        ],
+        "summary": "确认公众号 OAuth2 授权并获取 code",
+        "description": "提交 authorization_url，确认公众号网页授权并获取 code。",
+        "operationId": "oauthConfirm",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuthConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已取得公众号网页授权 code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthConfirmResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/OAuthBadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/OAuthNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "502": {
+            "$ref": "#/components/responses/OAuthBadGateway"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/transfer": {
+      "post": {
+        "tags": [
+          "Transfer"
+        ],
+        "summary": "通用 Transfer 协议调试",
+        "description": "通过 cgi、route、请求体和响应解码方式调用 Transfer。route 默认 1029。",
+        "operationId": "transfer",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferRequest"
+              },
+              "examples": {
+                "standardJSON": {
+                  "summary": "standard inner_mode + JSON data",
+                  "value": {
+                    "unionid": "o_xxx",
+                    "appid": "wx887bf6ad752ca2f3",
+                    "cgi": "/cgi-bin/mmbiz-bin/js-operatewxdata",
+                    "route": 1029,
+                    "data_format": "json",
+                    "data": {
+                      "api_name": "qbase_commapi",
+                      "data": {}
+                    }
+                  }
+                },
+                "protobufInner": {
+                  "summary": "protobuf inner_mode 逐字段构造",
+                  "value": {
+                    "unionid": "o_xxx",
+                    "appid": "wx887bf6ad752ca2f3",
+                    "cgi": "/cgi-bin/mmbiz-bin/js-operatewxdata",
+                    "route": 1029,
+                    "inner_mode": "protobuf",
+                    "inner_fields": [
+                      {
+                        "number": 1,
+                        "type": "session_base"
+                      },
+                      {
+                        "number": 2,
+                        "type": "target_appid"
+                      },
+                      {
+                        "number": 3,
+                        "type": "string",
+                        "value": "{\"api_name\":\"qbase_commapi\",\"data\":{}}"
+                      },
+                      {
+                        "number": 4,
+                        "type": "varint",
+                        "uint": 1
+                      }
+                    ],
+                    "response_mode": "auto"
+                  }
+                },
+                "rawInner": {
+                  "summary": "raw inner_mode 直接投递 inner body",
+                  "value": {
+                    "unionid": "o_xxx",
+                    "appid": "wx887bf6ad752ca2f3",
+                    "cgi": "/cgi-bin/example",
+                    "inner_mode": "raw",
+                    "inner_base64": "CgQIARAB",
+                    "response_mode": "protobuf"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transfer 执行结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "504": {
+            "$ref": "#/components/responses/GatewayTimeout"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "ScanID": {
+        "name": "scan_id",
+        "in": "query",
+        "required": true,
+        "description": "本机扫码会话自增 ID",
+        "schema": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 1
+        },
+        "example": 1
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "请求参数错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "资源不存在",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "服务内部错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "BadGateway": {
+        "description": "上游调用失败",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "OAuthBadRequest": {
+        "description": "公众号 OAuth 请求参数错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OAuthErrorResponse"
+            }
+          }
+        }
+      },
+      "OAuthNotFound": {
+        "description": "unionid 对应账号不存在",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OAuthErrorResponse"
+            }
+          }
+        }
+      },
+      "OAuthBadGateway": {
+        "description": "公众号 OAuth 上游协议错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OAuthErrorResponse"
+            }
+          }
+        }
+      },
+      "UnprocessableEntity": {
+        "description": "微信公众号 OAuth 业务拒绝",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OAuthErrorResponse"
+            }
+          }
+        }
+      },
+      "GatewayTimeout": {
+        "description": "微信公众号 OAuth 请求超时",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OAuthErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "User": {
+        "type": "object",
+        "description": "用户对象。",
+        "properties": {
+          "unionid": {
+            "type": "string",
+            "example": "o_xxx"
+          },
+          "openid": {
+            "type": "string",
+            "example": "o_xxx"
+          },
+          "guid": {
+            "type": "string",
+            "example": "guid-value"
+          },
+          "login_type": {
+            "type": "string",
+            "example": "WX"
+          },
+          "access_token": {
+            "type": "string"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "wx_code": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "device_id_b64": {
+            "type": "string"
+          },
+          "app_device_id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "uin": {
+            "type": "string"
+          },
+          "autoauth_key_b64": {
+            "type": "string"
+          },
+          "autoauth_enc_key_b64": {
+            "type": "string"
+          },
+          "ck_expires_at": {
+            "type": "string",
+            "example": "Mon, 27 Jul 2026 10:14:30 GMT",
+            "description": "应用宝 OAuth Set-Cookie 中的 Expires 字符串。"
+          },
+          "duration": {
+            "type": "string",
+            "example": "1S",
+            "description": "账号记录从创建到最近更新的间隔，使用 H 小时 / M 分钟 / S 秒文本，省略为 0 的单位，整秒截断。最小 1S。"
+          }
+        },
+        "required": [
+          "unionid",
+          "openid",
+          "guid",
+          "login_type",
+          "access_token",
+          "refresh_token",
+          "wx_code",
+          "state",
+          "device_id_b64",
+          "app_device_id",
+          "username",
+          "uin",
+          "autoauth_key_b64",
+          "autoauth_enc_key_b64",
+          "ck_expires_at",
+          "duration"
+        ]
+      },
+      "DeleteUserRequest": {
+        "type": "object",
+        "properties": {
+          "unionid": {
+            "type": "string",
+            "example": "o_xxx"
+          }
+        },
+        "required": [
+          "unionid"
+        ],
+        "additionalProperties": false
+      },
+      "DeleteUserResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "example": true
+          },
+          "unionid": {
+            "type": "string",
+            "example": "o_xxx"
+          },
+          "deleted": {
+            "type": "boolean",
+            "example": true
+          },
+          "detached_scan_sessions": {
+            "type": "integer",
+            "format": "int64",
+            "example": 3,
+            "description": "删除账号时解除关联的扫码历史数量。"
+          }
+        },
+        "required": [
+          "ok",
+          "unionid",
+          "deleted",
+          "detached_scan_sessions"
+        ]
+      },
+      "CodeRequest": {
+        "type": "object",
+        "properties": {
+          "unionid": {
+            "type": "string",
+            "example": "o_xxx"
+          },
+          "appid": {
+            "type": "string",
+            "example": "wx7c45a544886d9e69"
+          },
+          "type": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ],
+            "description": "1=标准取码；2=快速取码。"
+          }
+        },
+        "required": [
+          "unionid",
+          "appid",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "CodeResult": {
+        "type": "object",
+        "properties": {
+          "unionid": {
+            "type": "string",
+            "example": "o_xxx"
+          },
+          "appid": {
+            "type": "string",
+            "example": "wx7c45a544886d9e69"
+          },
+          "type": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "succeeded",
+              "failed"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "example": "081xxx"
+          },
+          "error": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "string",
+            "example": "2S",
+            "description": "本次取码耗时，使用 H 小时 / M 分钟 / S 秒文本，省略为 0 的单位，整秒截断。最小 1S。"
+          }
+        },
+        "required": [
+          "unionid",
+          "appid",
+          "type",
+          "status",
+          "code",
+          "error",
+          "duration"
+        ]
+      },
+      "OperateWXDataRequest": {
+        "type": "object",
+        "properties": {
+          "unionid": {
+            "type": "string",
+            "example": "o_xxx"
+          },
+          "appid": {
+            "type": "string",
+            "example": "wx887bf6ad752ca2f3"
+          },
+          "type": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3
+            ],
+            "description": "1=raw 模式，2=云函数快捷模式，3=云网关三元组模式。"
+          },
+          "operate_code": {
+            "type": "integer",
+            "default": 1,
+            "minimum": 0
+          },
+          "function_name": {
+            "type": "string",
+            "description": "type=2 时必填。"
+          },
+          "data": {
+            "description": "type=1 时为完整 operateWXData.data；type=2 时为云函数业务入参；type=3 时为可选配置对象，默认传空对象即可。",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "unionid",
+          "appid",
+          "type",
+          "data"
+        ],
+        "additionalProperties": false
+      },
+      "OperateWXDataResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "appid": {
+            "type": "string"
+          },
+          "operate_code": {
+            "type": "integer"
+          },
+          "duration": {
+            "type": "string",
+            "example": "1S",
+            "description": "本次请求耗时，使用 H 小时 / M 分钟 / S 秒文本，省略为 0 的单位，整秒截断。最小 1S。"
+          },
+          "request": {
+            "$ref": "#/components/schemas/OperateWXDataRequestTrace"
+          },
+          "response": {
+            "$ref": "#/components/schemas/OperateWXDataResponseTrace"
+          },
+          "gateway_service_info": {
+            "$ref": "#/components/schemas/GatewayServiceInfo"
+          },
+          "decoded": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "decoded_raw": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "appid",
+          "operate_code",
+          "duration",
+          "request",
+          "response"
+        ]
+      },
+      "OperateWXDataRequestTrace": {
+        "type": "object",
+        "properties": {
+          "cmdid": {
+            "type": "integer",
+            "format": "int32",
+            "example": 2881
+          },
+          "cgi": {
+            "type": "string",
+            "example": "/cgi-bin/mmbiz-bin/js-operatewxdata"
+          },
+          "wrapper_len": {
+            "type": "integer"
+          },
+          "out_body_len": {
+            "type": "integer"
+          },
+          "pack_round_trip_ok": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OperateWXDataResponseTrace": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "example": "longlinkPack"
+          },
+          "task_id": {
+            "type": "integer",
+            "format": "int32",
+            "example": 2881
+          },
+          "tag4": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "tag23": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "body_len": {
+            "type": "integer"
+          },
+          "decode_mode": {
+            "type": "string",
+            "example": "raw89-sessionField2"
+          },
+          "plain_len": {
+            "type": "integer"
+          }
+        }
+      },
+      "GatewayServiceInfo": {
+        "type": "object",
+        "description": "type=3 时返回的云网关三元组提取结果。ok=false 时仍保留 decoded/decoded_raw 供排查。",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "token": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "rid": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1809301331,
+            "description": "服务端返回的业务 rid。"
+          },
+          "qbase_rid": {
+            "type": "string",
+            "example": "7d594a9c78ffbdf0-1783614507482-661580ae1d27f820",
+            "description": "请求 qbase_options 中的完整追踪 rid。"
+          },
+          "kx": {
+            "type": "string",
+            "description": "服务端返回的 X25519 公钥。"
+          },
+          "client_kx": {
+            "type": "string",
+            "description": "本次请求动态生成的 X25519 客户端公钥。"
+          },
+          "server_kx": {
+            "type": "string",
+            "description": "用于派生 key 的服务端 X25519 公钥。"
+          },
+          "iat": {},
+          "exp": {},
+          "source": {
+            "type": "string",
+            "example": "tcbapi_get_service_info"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "rid",
+          "qbase_rid",
+          "source"
+        ]
+      },
+      "ScanSession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "scanned",
+              "authorized",
+              "completed",
+              "canceled",
+              "expired",
+              "failed"
+            ]
+          },
+          "guid": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          },
+          "qr_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "scan_expires_in": {
+            "type": "string",
+            "example": "2M",
+            "description": "距离扫码会话过期的剩余时间，使用 H 小时 / M 分钟 / S 秒文本，省略为 0 的单位，整秒截断。到期后为 0S。"
+          },
+          "last_errcode": {
+            "type": "string"
+          },
+          "wx_code": {
+            "type": "string"
+          },
+          "openid": {
+            "type": "string"
+          },
+          "unionid": {
+            "type": "string"
+          },
+          "account_unionid": {
+            "type": "string"
+          },
+          "ck_expires_at": {
+            "type": "string",
+            "example": "Mon, 27 Jul 2026 10:14:30 GMT"
+          },
+          "error": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "string",
+            "example": "28S",
+            "description": "扫码会话从创建到最近更新的间隔，使用 H 小时 / M 分钟 / S 秒文本，省略为 0 的单位，整秒截断。最小 1S。"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "guid",
+          "state",
+          "uuid",
+          "qr_url",
+          "scan_expires_in",
+          "last_errcode",
+          "wx_code",
+          "openid",
+          "unionid",
+          "ck_expires_at",
+          "error",
+          "duration"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "错误信息"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "GetPhoneRequest": {
+        "type": "object",
+        "properties": {
+          "unionid": {
+            "type": "string",
+            "example": "o_xxx"
+          },
+          "appid": {
+            "type": "string",
+            "example": "wxde7e5cd3f013ff7d"
+          }
+        },
+        "required": [
+          "unionid",
+          "appid"
+        ],
+        "additionalProperties": false
+      },
+      "OAuthAuthorizeRequest": {
+        "type": "object",
+        "properties": {
+          "unionid": {
+            "type": "string",
+            "example": "o_xxx"
+          },
+          "appid": {
+            "type": "string",
+            "pattern": "^wx[0-9a-fA-F]{16}$",
+            "example": "wx1234567890abcdef"
+          },
+          "redirect_uri": {
+            "type": "string",
+            "format": "uri",
+            "example": "https://example.com/oauth/callback"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "snsapi_base",
+              "snsapi_userinfo"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "biz_username": {
+            "type": "string"
+          },
+          "scene": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "referrer_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "sub_scene": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "auto_oauth": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "unionid",
+          "appid",
+          "redirect_uri",
+          "scope"
+        ],
+        "additionalProperties": false
+      },
+      "OAuthConfirmRequest": {
+        "type": "object",
+        "properties": {
+          "unionid": {
+            "type": "string",
+            "example": "o_xxx"
+          },
+          "appid": {
+            "type": "string",
+            "pattern": "^wx[0-9a-fA-F]{16}$"
+          },
+          "authorization_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "avatar_id": {
+            "type": "string",
+            "description": "授权响应 avatar_list[].id 中的非负 32 位整数文本，省略时使用 0。",
+            "pattern": "^[0-9]+$",
+            "example": "0"
+          }
+        },
+        "required": [
+          "unionid",
+          "appid",
+          "authorization_url"
+        ],
+        "additionalProperties": false
+      },
+      "OAuthScopeInfo": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string"
+          },
+          "desc": {
+            "type": "string"
+          },
+          "auth_state": {
+            "type": "integer"
+          },
+          "ext_desc": {
+            "type": "string"
+          },
+          "auth_sub_desc": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "desc",
+          "auth_state",
+          "ext_desc",
+          "auth_sub_desc"
+        ]
+      },
+      "OAuthAvatarInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": "string"
+          },
+          "avatarurl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "nickname",
+          "avatarurl"
+        ]
+      },
+      "OAuthAuthorizeResult": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "confirmation_required",
+              "completed"
+            ]
+          },
+          "unionid": {
+            "type": "string"
+          },
+          "appid": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "authorization_url": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "is_recent_has_auth": {
+            "type": "boolean"
+          },
+          "is_silent_auth": {
+            "type": "boolean"
+          },
+          "scope_list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OAuthScopeInfo"
+            }
+          },
+          "avatar_list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OAuthAvatarInfo"
+            }
+          },
+          "duration": {
+            "type": "string",
+            "description": "时间间隔，使用 H 小时 / M 分钟 / S 秒文本，省略为 0 的单位，整秒截断。最小 1S。"
+          }
+        },
+        "required": [
+          "status",
+          "unionid",
+          "appid",
+          "scope",
+          "state",
+          "authorization_url",
+          "code",
+          "is_recent_has_auth",
+          "is_silent_auth",
+          "scope_list",
+          "avatar_list",
+          "duration"
+        ]
+      },
+      "OAuthConfirmResult": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed"
+            ]
+          },
+          "unionid": {
+            "type": "string"
+          },
+          "appid": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "redirect_uri": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "string",
+            "description": "时间间隔，使用 H 小时 / M 分钟 / S 秒文本，省略为 0 的单位，整秒截断。最小 1S。"
+          }
+        },
+        "required": [
+          "status",
+          "unionid",
+          "appid",
+          "code",
+          "state",
+          "redirect_uri",
+          "duration"
+        ]
+      },
+      "OAuthErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "wechat_ret": {
+                "type": "integer"
+              },
+              "wechat_message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "GetUserInfoRequest": {
+        "type": "object",
+        "properties": {
+          "unionid": {
+            "type": "string",
+            "example": "o_xxx"
+          },
+          "lang": {
+            "type": "string",
+            "enum": [
+              "zh_CN",
+              "zh_TW",
+              "en"
+            ],
+            "default": "zh_CN",
+            "description": "微信 sns/userinfo 的语言参数"
+          }
+        },
+        "required": [
+          "unionid"
+        ],
+        "additionalProperties": false
+      },
+      "UserInfo": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "description": "是否拿到微信 OAuth 用户资料"
+          },
+          "unionid": {
+            "type": "string"
+          },
+          "openid": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": "string",
+            "description": "微信资料昵称"
+          },
+          "headimgurl": {
+            "type": "string",
+            "description": "微信头像 URL"
+          },
+          "sex": {
+            "type": "integer"
+          },
+          "country": {
+            "type": "string"
+          },
+          "province": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "privilege": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "errcode": {
+            "type": "integer",
+            "description": "微信业务错误码，成功时省略"
+          },
+          "errmsg": {
+            "type": "string",
+            "description": "微信业务错误信息，成功时省略"
+          },
+          "duration": {
+            "type": "string",
+            "example": "1S",
+            "description": "本次资料获取耗时，使用 H 小时 / M 分钟 / S 秒文本，省略为 0 的单位，整秒截断。最小 1S。"
+          }
+        },
+        "required": [
+          "ok",
+          "unionid",
+          "openid",
+          "nickname",
+          "headimgurl",
+          "sex",
+          "country",
+          "province",
+          "city",
+          "privilege",
+          "duration"
+        ]
+      },
+      "PhoneResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "description": "是否拿到真实手机号（mobile 非空）"
+          },
+          "mobile": {
+            "type": "string",
+            "description": "手机号（成功时返回）"
+          },
+          "show_mobile": {
+            "type": "string",
+            "description": "脱敏手机号"
+          },
+          "encryptedData": {
+            "type": "string"
+          },
+          "iv": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "data": {
+            "type": "string"
+          },
+          "cloud_id": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "string",
+            "example": "2S",
+            "description": "本次取号耗时，使用 H 小时 / M 分钟 / S 秒文本，省略为 0 的单位，整秒截断。最小 1S。"
+          },
+          "error": {
+            "type": "string",
+            "description": "协议或上游错误"
+          }
+        },
+        "required": [
+          "ok",
+          "mobile",
+          "show_mobile",
+          "encryptedData",
+          "iv",
+          "code",
+          "duration"
+        ]
+      },
+      "TransferProtoField": {
+        "type": "object",
+        "description": "protobuf inner_mode 下的单个字段。模板类型不接受 value 和 uint。",
+        "properties": {
+          "number": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 536870911,
+            "description": "protobuf 字段号，不能落在保留段 19000-19999。"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "session_base",
+              "target_appid",
+              "host_appid",
+              "ilink_appid",
+              "string",
+              "bytes",
+              "varint",
+              "fixed32",
+              "fixed64"
+            ],
+            "description": "前四个是模板类型，由服务端自动填充对应值。"
+          },
+          "value": {
+            "type": "string",
+            "description": "type=string 时是文本；type=bytes 时是标准 base64。"
+          },
+          "uint": {
+            "type": "integer",
+            "format": "int64",
+            "description": "type=varint、fixed32 或 fixed64 时必填。"
+          }
+        },
+        "required": [
+          "number",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "TransferOuter": {
+        "type": "object",
+        "description": "外层信封字段覆盖，全部可选，省略则使用服务端默认值。",
+        "properties": {
+          "host_appid": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "默认使用服务端内置 host appid。"
+          },
+          "field4": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "field8": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "plugin": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "field10": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferTransport": {
+        "type": "object",
+        "description": "长连接传输层覆盖，全部可选。",
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "default": 4
+          },
+          "task_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "default": 2881
+          },
+          "task_type": {
+            "type": "integer",
+            "format": "int32",
+            "default": 2
+          },
+          "identity_mode": {
+            "type": "string",
+            "enum": [
+              "account",
+              "zero"
+            ],
+            "default": "account"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferRequest": {
+        "type": "object",
+        "properties": {
+          "unionid": {
+            "type": "string",
+            "example": "o_xxx"
+          },
+          "appid": {
+            "type": "string",
+            "example": "wx887bf6ad752ca2f3"
+          },
+          "cgi": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "必须以 / 开头的相对路径，不能带 scheme、host、userinfo 或 fragment。",
+            "example": "/cgi-bin/mmbiz-bin/js-operatewxdata"
+          },
+          "route": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "default": 1029,
+            "description": "外层信封 route，省略时使用 1029。"
+          },
+          "data_format": {
+            "type": "string",
+            "enum": [
+              "none",
+              "json",
+              "text",
+              "base64"
+            ],
+            "default": "none",
+            "description": "仅 standard inner_mode 可用。"
+          },
+          "data": {
+            "description": "data_format=json 时为任意 JSON；text 和 base64 时必须是 JSON 字符串；none 时省略。",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "inner_mode": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "protobuf",
+              "raw"
+            ],
+            "default": "standard",
+            "description": "standard 构造 1=session_base、2=target_appid、3=data；protobuf 由 inner_fields 逐字段构造；raw 直接使用 inner_base64。"
+          },
+          "inner_fields": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "$ref": "#/components/schemas/TransferProtoField"
+            },
+            "description": "inner_mode=protobuf 时必填。"
+          },
+          "inner_base64": {
+            "type": "string",
+            "description": "inner_mode=raw 时必填，标准 base64 编码的 inner body。"
+          },
+          "outer": {
+            "$ref": "#/components/schemas/TransferOuter"
+          },
+          "transport": {
+            "$ref": "#/components/schemas/TransferTransport"
+          },
+          "response_mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "json",
+              "protobuf",
+              "raw"
+            ],
+            "default": "auto",
+            "description": "auto 自动识别 JSON、protobuf 或 raw。"
+          }
+        },
+        "required": [
+          "unionid",
+          "appid",
+          "cgi"
+        ],
+        "additionalProperties": false
+      },
+      "TransferRequestTrace": {
+        "type": "object",
+        "properties": {
+          "cgi": {
+            "type": "string"
+          },
+          "route": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "task_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "task_type": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "identity_mode": {
+            "type": "string"
+          },
+          "inner_mode": {
+            "type": "string"
+          },
+          "inner_body_len": {
+            "type": "integer"
+          },
+          "host_appid": {
+            "type": "string"
+          },
+          "outer_field4": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "outer_field8": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "plugin": {
+            "type": "string"
+          },
+          "outer_field10": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "wrapper_len": {
+            "type": "integer"
+          },
+          "out_body_len": {
+            "type": "integer"
+          },
+          "pack_round_trip_ok": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TransferResponseTrace": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "task_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "task_type": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tag4": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "tag23": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "body_len": {
+            "type": "integer"
+          },
+          "decode_mode": {
+            "type": "string",
+            "description": "raw89-sessionField2、raw89-sessionField3、raw89-packrequest 或 direct-proto。"
+          },
+          "plain_len": {
+            "type": "integer"
+          }
+        }
+      },
+      "TransferResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "unionid": {
+            "type": "string"
+          },
+          "appid": {
+            "type": "string"
+          },
+          "cgi": {
+            "type": "string"
+          },
+          "route": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "data_format": {
+            "type": "string"
+          },
+          "inner_mode": {
+            "type": "string"
+          },
+          "response_mode": {
+            "type": "string"
+          },
+          "decoded": {
+            "nullable": true,
+            "description": "decoded_format=json 时是解析后的 JSON；protobuf 时是结构化字段树，含 fields、strings 和 code_candidates；raw 时为 null。"
+          },
+          "decoded_format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "protobuf",
+              "raw"
+            ]
+          },
+          "decoded_raw": {
+            "type": "string",
+            "description": "decoded_format=json 时是原始 JSON 文本，其余为空。"
+          },
+          "plain_base64": {
+            "type": "string",
+            "description": "解密后的响应明文，标准 base64 编码。"
+          },
+          "request": {
+            "$ref": "#/components/schemas/TransferRequestTrace"
+          },
+          "response": {
+            "$ref": "#/components/schemas/TransferResponseTrace"
+          },
+          "duration": {
+            "type": "string",
+            "example": "1S",
+            "description": "时间间隔，使用 H 小时 / M 分钟 / S 秒文本，省略为 0 的单位，整秒截断。最小 1S。"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "opaque",
+        "description": "在 Swagger UI 的 Authorize 中填写 token 本体；curl 或外部调用使用 Authorization: Bearer <token>。"
+      }
+    }
+  }
+}

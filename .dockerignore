@@ -1,0 +1,14 @@
+.git
+.github
+runtime
+dist
+build
+*.db
+*.db-*
+*.log
+*.out
+*.exe
+*.test
+coverage.out
+Dockerfile*
+docker-compose*.yml

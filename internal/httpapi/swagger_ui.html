@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="yyb-auth-service Swagger UI" />
+  <title>yyb-auth-service API</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.32.8/swagger-ui.css" />
+  <style>
+    :root {
+      --yyb-scan-ink: #172033;
+      --yyb-scan-muted: #5b6475;
+      --yyb-scan-border: #d9dfeb;
+      --yyb-scan-surface: #ffffff;
+      --yyb-scan-backdrop: rgba(15, 23, 42, 0.58);
+      --yyb-scan-accent: #2563eb;
+      --yyb-scan-success: #047857;
+      --yyb-scan-warning: #b45309;
+      --yyb-scan-error: #b91c1c;
+    }
+
+    .yyb-scan-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: var(--yyb-scan-backdrop);
+    }
+
+    .yyb-scan-overlay[data-open="true"] {
+      display: flex;
+    }
+
+    .yyb-scan-dialog {
+      width: min(520px, 100%);
+      max-height: min(760px, calc(100vh - 48px));
+      overflow: auto;
+      border-radius: 8px;
+      background: var(--yyb-scan-surface);
+      box-shadow: 0 18px 46px rgba(15, 23, 42, 0.24);
+      color: var(--yyb-scan-ink);
+    }
+
+    .yyb-scan-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 20px 22px 12px;
+    }
+
+    .yyb-scan-title {
+      margin: 0;
+      font: 600 18px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .yyb-scan-close {
+      width: 36px;
+      height: 36px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--yyb-scan-ink);
+      cursor: pointer;
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    .yyb-scan-close:hover,
+    .yyb-scan-close:focus-visible {
+      background: #eef2f7;
+      outline: none;
+    }
+
+    .yyb-scan-body {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 0 22px 22px;
+    }
+
+    .yyb-scan-status {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      border-radius: 999px;
+      padding: 5px 10px;
+      background: #eef4ff;
+      color: var(--yyb-scan-accent);
+      font: 600 13px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .yyb-scan-status[data-tone="success"] {
+      background: #ecfdf5;
+      color: var(--yyb-scan-success);
+    }
+
+    .yyb-scan-status[data-tone="warning"] {
+      background: #fffbeb;
+      color: var(--yyb-scan-warning);
+    }
+
+    .yyb-scan-status[data-tone="error"] {
+      background: #fef2f2;
+      color: var(--yyb-scan-error);
+    }
+
+    .yyb-scan-image-wrap {
+      display: grid;
+      place-items: center;
+      min-height: 360px;
+      border: 1px solid var(--yyb-scan-border);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .yyb-scan-image {
+      display: block;
+      width: min(360px, calc(100vw - 96px));
+      height: auto;
+      aspect-ratio: 1;
+    }
+
+    .yyb-scan-meta {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 8px 12px;
+      margin: 0;
+      color: var(--yyb-scan-muted);
+      font: 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .yyb-scan-meta dt {
+      margin: 0;
+      color: var(--yyb-scan-ink);
+      font-weight: 600;
+    }
+
+    .yyb-scan-meta dd {
+      min-width: 0;
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .yyb-scan-result {
+      display: none;
+      margin: 0;
+      max-height: 220px;
+      overflow: auto;
+      border-radius: 8px;
+      background: #0f172a;
+      color: #e5edf8;
+      padding: 12px;
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      white-space: pre-wrap;
+    }
+
+    .yyb-scan-result[data-open="true"] {
+      display: block;
+    }
+
+    @media (max-width: 560px) {
+      .yyb-scan-overlay {
+        padding: 12px;
+      }
+
+      .yyb-scan-dialog {
+        max-height: calc(100vh - 24px);
+      }
+
+      .yyb-scan-image-wrap {
+        min-height: 280px;
+      }
+
+      .yyb-scan-image {
+        width: min(280px, calc(100vw - 72px));
+      }
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .yyb-scan-dialog {
+        animation: yyb-scan-enter 160ms ease-out;
+      }
+
+      @keyframes yyb-scan-enter {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5.32.8/swagger-ui-bundle.js" crossorigin></script>
+  <script>
+    const scanTerminalStatuses = new Set(["completed", "canceled", "expired", "failed"]);
+    let lastScanAuthHeader = "";
+    let activeScanPoll = null;
+    let pendingScanCreateResponses = 0;
+
+    window.onload = () => {
+      window.ui = SwaggerUIBundle({
+        url: "/openapi.json",
+        dom_id: "#swagger-ui",
+        persistAuthorization: true,
+        requestInterceptor: (request) => {
+          if (isScanCreateRequest(request)) {
+            lastScanAuthHeader = scanAuthorizationHeader(request);
+            pendingScanCreateResponses += 1;
+          }
+          return request;
+        },
+        responseInterceptor: (response) => {
+          handleScanCreateResponse(response);
+          return response;
+        },
+        defaultModelsExpandDepth: -1
+      });
+    };
+
+    function isScanCreateRequest(request) {
+      if (!request) {
+        return false;
+      }
+      const method = String(request.method || "").toUpperCase();
+      return method === "POST" && pathnameFromURL(request.url) === "/api/scan";
+    }
+
+    function isScanCreateResponse(response) {
+      if (!response) {
+        return false;
+      }
+      if (pathnameFromURL(responseURL(response)) !== "/api/scan") {
+        return false;
+      }
+
+      const method = responseMethod(response);
+      if (method) {
+        return method === "POST";
+      }
+      return pendingScanCreateResponses > 0;
+    }
+
+    function pathnameFromURL(rawURL) {
+      try {
+        return new URL(String(rawURL || ""), window.location.origin).pathname;
+      } catch (_err) {
+        return "";
+      }
+    }
+
+    function scanAuthorizationHeader(request) {
+      const headers = request.headers || {};
+      return headers.Authorization || headers.authorization || "";
+    }
+
+    function responseURL(response) {
+      return response.url ||
+        (response.request && response.request.url) ||
+        (response.config && response.config.url) ||
+        "";
+    }
+
+    function responseMethod(response) {
+      const method = response.method ||
+        (response.request && response.request.method) ||
+        (response.config && response.config.method) ||
+        "";
+      return String(method || "").toUpperCase();
+    }
+
+    function handleScanCreateResponse(response) {
+      if (!isScanCreateResponse(response)) {
+        return;
+      }
+      pendingScanCreateResponses = Math.max(0, pendingScanCreateResponses - 1);
+      if (Number(response.status) !== 200) {
+        return;
+      }
+
+      const scan = responseJSON(response);
+      if (!scan || !scan.id || !scan.qr_url) {
+        return;
+      }
+
+      showScanDialog(scan);
+      startScanPolling(scan.id);
+    }
+
+    function responseJSON(response) {
+      const candidates = [response.data, response.obj, response.body, response.text];
+      for (const candidate of candidates) {
+        if (!candidate) {
+          continue;
+        }
+        if (typeof candidate === "object") {
+          return candidate;
+        }
+        if (typeof candidate === "string") {
+          try {
+            return JSON.parse(candidate);
+          } catch (_err) {
+            continue;
+          }
+        }
+      }
+      return null;
+    }
+
+    function showScanDialog(scan) {
+      const dialog = ensureScanDialog();
+      dialog.overlay.dataset.open = "true";
+      dialog.image.src = scan.qr_url;
+      dialog.image.alt = "扫码登录二维码";
+      dialog.scanID.textContent = String(scan.id);
+      dialog.status.textContent = statusText(scan.status);
+      dialog.status.dataset.tone = statusTone(scan.status);
+      dialog.result.dataset.open = "false";
+      dialog.result.textContent = "";
+    }
+
+    function ensureScanDialog() {
+      let overlay = document.querySelector(".yyb-scan-overlay");
+      if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.className = "yyb-scan-overlay";
+        overlay.innerHTML = `
+          <section class="yyb-scan-dialog" role="dialog" aria-modal="true" aria-labelledby="yyb-scan-title">
+            <header class="yyb-scan-header">
+              <h2 id="yyb-scan-title" class="yyb-scan-title">扫码登录</h2>
+              <button class="yyb-scan-close" type="button" aria-label="关闭">×</button>
+            </header>
+            <div class="yyb-scan-body">
+              <span class="yyb-scan-status" data-tone="info">等待扫码</span>
+              <div class="yyb-scan-image-wrap">
+                <img class="yyb-scan-image" alt="扫码登录二维码" />
+              </div>
+              <dl class="yyb-scan-meta">
+                <dt>scan_id</dt>
+                <dd data-scan-id></dd>
+              </dl>
+              <pre class="yyb-scan-result" data-open="false"></pre>
+            </div>
+          </section>
+        `;
+        document.body.appendChild(overlay);
+        overlay.querySelector(".yyb-scan-close").addEventListener("click", closeScanDialog);
+        overlay.addEventListener("click", (event) => {
+          if (event.target === overlay) {
+            closeScanDialog();
+          }
+        });
+      }
+
+      return {
+        overlay,
+        image: overlay.querySelector(".yyb-scan-image"),
+        status: overlay.querySelector(".yyb-scan-status"),
+        scanID: overlay.querySelector("[data-scan-id]"),
+        result: overlay.querySelector(".yyb-scan-result")
+      };
+    }
+
+    function closeScanDialog() {
+      const overlay = document.querySelector(".yyb-scan-overlay");
+      if (overlay) {
+        overlay.dataset.open = "false";
+      }
+      stopScanPolling();
+    }
+
+    function startScanPolling(scanID) {
+      stopScanPolling();
+      pollScan(scanID);
+      activeScanPoll = window.setInterval(() => pollScan(scanID), 2000);
+    }
+
+    function stopScanPolling() {
+      if (activeScanPoll) {
+        window.clearInterval(activeScanPoll);
+        activeScanPoll = null;
+      }
+    }
+
+    async function pollScan(scanID) {
+      const dialog = ensureScanDialog();
+      try {
+        const headers = {
+          Accept: "application/json"
+        };
+        if (lastScanAuthHeader) {
+          headers.Authorization = lastScanAuthHeader;
+        }
+
+        const response = await fetch(`/api/scan?scan_id=${encodeURIComponent(scanID)}`, {
+          method: "GET",
+          headers
+        });
+        const scan = await response.json();
+        if (!response.ok) {
+          throw new Error(scan && scan.error ? scan.error : `HTTP ${response.status}`);
+        }
+
+        dialog.status.textContent = statusText(scan.status);
+        dialog.status.dataset.tone = statusTone(scan.status);
+        if (scanTerminalStatuses.has(String(scan.status || ""))) {
+          stopScanPolling();
+          dialog.result.dataset.open = "true";
+          dialog.result.textContent = JSON.stringify(scan, null, 2);
+        }
+      } catch (err) {
+        stopScanPolling();
+        dialog.status.textContent = "轮询失败";
+        dialog.status.dataset.tone = "error";
+        dialog.result.dataset.open = "true";
+        dialog.result.textContent = JSON.stringify({
+          error: err instanceof Error ? err.message : String(err)
+        }, null, 2);
+      }
+    }
+
+    function statusText(status) {
+      switch (status) {
+        case "waiting":
+          return "等待扫码";
+        case "scanned":
+          return "已扫码";
+        case "authorized":
+          return "已确认";
+        case "completed":
+          return "已完成";
+        case "canceled":
+          return "已取消";
+        case "expired":
+          return "已过期";
+        case "failed":
+          return "失败";
+        default:
+          return status ? String(status) : "等待扫码";
+      }
+    }
+
+    function statusTone(status) {
+      switch (status) {
+        case "completed":
+          return "success";
+        case "canceled":
+        case "expired":
+          return "warning";
+        case "failed":
+          return "error";
+        default:
+          return "info";
+      }
+    }
+  </script>
+</body>
+</html>
