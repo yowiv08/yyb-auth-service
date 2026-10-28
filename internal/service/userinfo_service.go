@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -109,13 +110,21 @@ func (s *UserInfoService) Get(
 		return UserInfoResult{}, fmt.Errorf("请求微信 userinfo: %w", err)
 	}
 	if shouldRecover {
+		rejection := err
+		if userInfo.ErrCode != 0 {
+			rejection = errors.Join(rejection, &yyb.BusinessError{
+				Operation: "wechat userinfo",
+				Code:      userInfo.ErrCode,
+				Message:   userInfo.ErrMsg,
+			})
+		}
 		account, err = s.accounts.RecoverExpired(
 			requestCtx,
 			unionID,
 			account.AccessToken,
 		)
 		if err != nil {
-			return UserInfoResult{}, fmt.Errorf("刷新 userinfo token: %w", err)
+			return UserInfoResult{}, errors.Join(rejection, fmt.Errorf("刷新 userinfo token: %w", err))
 		}
 		userInfo, err = s.client.GetUserInfo(
 			requestCtx,

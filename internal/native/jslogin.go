@@ -275,6 +275,9 @@ func summarizeJSLoginFailure(attempts []JSLoginAttempt) string {
 	if len(attempts) == 0 {
 		return "no response bodies"
 	}
+	if ret, message := summarizeJSLoginBusinessError(attempts); ret != 0 || message != "" {
+		return fmt.Sprintf("wechat rejected js-login ret=%d errmsg=%q", ret, message)
+	}
 
 	emptyBodies := 0
 	decodeErrors := 0

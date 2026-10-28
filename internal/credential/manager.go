@@ -3,6 +3,7 @@ package credential
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -13,14 +14,7 @@ import (
 	"yyb-auth-service/internal/yyb"
 )
 
-const defaultReuseWindow = 5 * time.Second
 const credentialPersistenceTimeout = 5 * time.Second
-
-var defaultRetryDelays = []time.Duration{
-	0,
-	150 * time.Millisecond,
-	500 * time.Millisecond,
-}
 
 type AccountRepository interface {
 	ByUnionID(ctx context.Context, unionID string) (model.Account, error)
@@ -41,11 +35,9 @@ type AuthClient interface {
 }
 
 type Manager struct {
-	accounts    AccountRepository
-	client      AuthClient
-	reuseWindow time.Duration
-	retryDelays []time.Duration
-	now         func() time.Time
+	accounts AccountRepository
+	client   AuthClient
+	now      func() time.Time
 
 	locksMu sync.Mutex
 	locks   map[string]*lockEntry
@@ -63,8 +55,6 @@ func NewManager(accounts AccountRepository, client AuthClient) *Manager {
 	return &Manager{
 		accounts:       accounts,
 		client:         client,
-		reuseWindow:    defaultReuseWindow,
-		retryDelays:    append([]time.Duration{}, defaultRetryDelays...),
 		now:            time.Now,
 		locks:          map[string]*lockEntry{},
 		operationLocks: map[string]*lockEntry{},
@@ -123,28 +113,23 @@ func (m *Manager) FreshLoginBuffer(
 		return model.Account{}, yyb.FreshLoginBuffer{}, err
 	}
 
-	didRefresh := false
-	if !m.isFresh(saved.TokenInfo.RefreshedAt) {
-		account, saved, err = m.refreshLocked(ctx, account, saved)
-		if err != nil {
-			return model.Account{}, yyb.FreshLoginBuffer{}, err
-		}
-		didRefresh = true
-	}
-
 	credentials := credentialsFromAccount(account)
-	loginBuffer, err := m.getLoginBufferWithRetry(
+	loginBuffer, err := m.getLoginBuffer(
 		ctx,
 		credentials,
 		account.UnionID,
 	)
-	if err != nil && yyb.IsHTTPStatus(err, 403) && !didRefresh {
+	if yyb.IsCredentialExpired(err) {
+		loginErr := err
 		account, saved, err = m.refreshLocked(ctx, account, saved)
 		if err != nil {
-			return model.Account{}, yyb.FreshLoginBuffer{}, err
+			return model.Account{}, yyb.FreshLoginBuffer{}, errors.Join(
+				fmt.Errorf("get login buffer: %w", loginErr),
+				err,
+			)
 		}
 		credentials = credentialsFromAccount(account)
-		loginBuffer, err = m.getLoginBufferWithRetry(
+		loginBuffer, err = m.getLoginBuffer(
 			ctx,
 			credentials,
 			account.UnionID,
@@ -225,19 +210,10 @@ func (m *Manager) MergeSession(
 	if err != nil {
 		return model.Account{}, err
 	}
-	if isAfter(
-		currentSaved.TokenInfo.RefreshedAt,
-		saved.TokenInfo.RefreshedAt,
-	) {
-		saved.TokenInfo = currentSaved.TokenInfo
-	} else {
-		credentials := credentialsFromAccount(account)
-		applyCredentials(
-			&saved,
-			credentials,
-			currentSaved.TokenInfo.RefreshedAt,
-		)
-	}
+	// Only credential refresh and scanning replace web credentials. A native
+	// operation may have newer protocol state without having refreshed a token.
+	saved.TokenInfo = currentSaved.TokenInfo
+	applyCredentials(&saved, credentialsFromAccount(account), "")
 	if isAfter(
 		currentSaved.LoginBufferInfo.RefreshedAt,
 		saved.LoginBufferInfo.RefreshedAt,
@@ -256,7 +232,7 @@ func (m *Manager) refreshLocked(
 	account model.Account,
 	saved session.SavedSession,
 ) (model.Account, session.SavedSession, error) {
-	credentials, err := m.refreshWithRetry(ctx, credentialsFromAccount(account))
+	credentials, err := m.client.RefreshToken(ctx, credentialsFromAccount(account))
 	if err != nil {
 		return model.Account{}, session.SavedSession{}, fmt.Errorf("refresh credentials: %w", err)
 	}
@@ -275,30 +251,7 @@ func (m *Manager) refreshLocked(
 	return account, saved, nil
 }
 
-func (m *Manager) refreshWithRetry(
-	ctx context.Context,
-	credentials yyb.Credentials,
-) (yyb.Credentials, error) {
-	var lastErr error
-	for attempt, delay := range m.retryDelays {
-		if err := waitForRetry(ctx, delay); err != nil {
-			return yyb.Credentials{}, err
-		}
-
-		refreshed, err := m.client.RefreshToken(ctx, credentials)
-		if err == nil {
-			return refreshed, nil
-		}
-		lastErr = err
-		isLastAttempt := attempt == len(m.retryDelays)-1
-		if isLastAttempt || !yyb.IsHTTPStatus(err, 403) {
-			break
-		}
-	}
-	return yyb.Credentials{}, lastErr
-}
-
-func (m *Manager) getLoginBufferWithRetry(
+func (m *Manager) getLoginBuffer(
 	ctx context.Context,
 	credentials yyb.Credentials,
 	unionID string,
@@ -309,28 +262,7 @@ func (m *Manager) getLoginBufferWithRetry(
 		RefreshToken: credentials.RefreshToken,
 	}
 
-	var lastErr error
-	for attempt, delay := range m.retryDelays {
-		if err := waitForRetry(ctx, delay); err != nil {
-			return yyb.LoginBuffer{}, err
-		}
-
-		loginBuffer, err := m.client.GetLoginBuffer(
-			ctx,
-			oauth,
-			credentials.GUID,
-			unionID,
-		)
-		if err == nil {
-			return loginBuffer, nil
-		}
-		lastErr = err
-		isLastAttempt := attempt == len(m.retryDelays)-1
-		if isLastAttempt || !yyb.IsHTTPStatus(err, 403) {
-			break
-		}
-	}
-	return yyb.LoginBuffer{}, lastErr
+	return m.client.GetLoginBuffer(ctx, oauth, credentials.GUID, unionID)
 }
 
 func (m *Manager) persistSavedLocked(
@@ -382,18 +314,6 @@ func (m *Manager) persistSavedLocked(
 	return updated, nil
 }
 
-func (m *Manager) isFresh(refreshedAt string) bool {
-	if m.reuseWindow <= 0 {
-		return false
-	}
-	parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(refreshedAt))
-	if err != nil {
-		return false
-	}
-	age := m.now().UTC().Sub(parsed.UTC())
-	return age >= 0 && age <= m.reuseWindow
-}
-
 func (m *Manager) lock(
 	ctx context.Context,
 	key string,
@@ -422,12 +342,13 @@ func decodeSavedSession(account model.Account) (session.SavedSession, error) {
 
 func credentialsFromAccount(account model.Account) yyb.Credentials {
 	return yyb.Credentials{
-		GUID:         account.GUID,
-		OpenID:       account.OpenID,
-		AccessToken:  account.AccessToken,
-		RefreshToken: account.RefreshToken,
-		LoginType:    firstNonEmpty(account.LoginType, "WX"),
-		UnionID:      account.UnionID,
+		GUID:            account.GUID,
+		OpenID:          account.OpenID,
+		AccessToken:     account.AccessToken,
+		RefreshToken:    account.RefreshToken,
+		LoginType:       firstNonEmpty(account.LoginType, "WX"),
+		UnionID:         account.UnionID,
+		CookieExpiresAt: account.CKExpiresAt,
 	}
 }
 
@@ -442,6 +363,9 @@ func applyCredentials(
 	saved.TokenInfo.AccessToken = credentials.AccessToken
 	saved.TokenInfo.RefreshToken = credentials.RefreshToken
 	saved.TokenInfo.LoginType = firstNonEmpty(credentials.LoginType, "WX")
+	if strings.TrimSpace(credentials.CookieExpiresAt) != "" {
+		saved.TokenInfo.CookieExpiresAt = credentials.CookieExpiresAt
+	}
 	if strings.TrimSpace(refreshedAt) != "" {
 		saved.TokenInfo.RefreshedAt = refreshedAt
 		saved.SavedAt = refreshedAt
@@ -524,24 +448,6 @@ func lockKeyed(
 	case <-ctx.Done():
 		releaseReference()
 		return nil, ctx.Err()
-	}
-}
-
-func waitForRetry(ctx context.Context, delay time.Duration) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if delay <= 0 {
-		return nil
-	}
-
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return ctx.Err()
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 }
 

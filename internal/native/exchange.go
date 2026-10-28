@@ -290,7 +290,9 @@ func applyFreshLoginBuffer(saved *session.SavedSession, fresh yyb.FreshLoginBuff
 	saved.TokenInfo.AccessToken = fresh.Credentials.AccessToken
 	saved.TokenInfo.RefreshToken = fresh.Credentials.RefreshToken
 	saved.TokenInfo.LoginType = firstNonEmpty(fresh.Credentials.LoginType, saved.TokenInfo.LoginType, "WX")
-	saved.TokenInfo.RefreshedAt = now.Format(time.RFC3339Nano)
+	if fresh.Credentials.CookieExpiresAt != "" {
+		saved.TokenInfo.CookieExpiresAt = fresh.Credentials.CookieExpiresAt
+	}
 	saved.LoginBufferInfo = session.LoginBufferInfo{
 		GUID:         fresh.Credentials.GUID,
 		OpenID:       fresh.Credentials.OpenID,

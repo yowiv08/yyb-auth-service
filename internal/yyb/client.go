@@ -61,12 +61,13 @@ func IsHTTPStatus(err error, statusCode int) bool {
 }
 
 type Credentials struct {
-	GUID         string
-	OpenID       string
-	AccessToken  string
-	RefreshToken string
-	LoginType    string
-	UnionID      string
+	GUID            string
+	OpenID          string
+	AccessToken     string
+	RefreshToken    string
+	LoginType       string
+	UnionID         string
+	CookieExpiresAt string
 }
 
 type ScanInit struct {
@@ -372,43 +373,14 @@ func (c *Client) RefreshToken(
 		return Credentials{}, err
 	}
 
-	var decoded map[string]any
-	if err := decodeJSONResponse("refresh token response", responseBody, response, &decoded); err != nil {
+	decoded, err := decodeCredentialResponse(
+		"refresh token", responseBody, response,
+		creds.AccessToken, creds.RefreshToken, creds.OpenID, creds.GUID, creds.UnionID,
+	)
+	if err != nil {
 		return Credentials{}, err
 	}
-
-	if code := intJSONValue(decoded, "code"); code != 0 {
-		return Credentials{}, fmt.Errorf(
-			"refresh token failed code=%d msg=%s",
-			code,
-			firstNonEmpty(
-				firstJSONValue(decoded, "msg"),
-				firstJSONValue(decoded, "message"),
-				firstJSONValue(decoded, "errMsg"),
-			),
-		)
-	}
-
-	updated := creds
-	updated.AccessToken = firstNonEmpty(
-		nestedString(decoded, "userInfo", "accessToken"),
-		nestedString(decoded, "userInfo", "access_token"),
-		nestedString(decoded, "user_info", "accessToken"),
-		nestedString(decoded, "user_info", "access_token"),
-		nestedString(decoded, "userInfo", "token"),
-		nestedString(decoded, "user_info", "token"),
-		creds.AccessToken,
-	)
-	updated.RefreshToken = firstNonEmpty(
-		nestedString(decoded, "userInfo", "refreshToken"),
-		nestedString(decoded, "userInfo", "refresh_token"),
-		nestedString(decoded, "user_info", "refreshToken"),
-		nestedString(decoded, "user_info", "refresh_token"),
-		creds.RefreshToken,
-	)
-	updated.LoginType = firstNonEmpty(creds.LoginType, "WX")
-
-	return updated, nil
+	return refreshedCredentials(creds, decoded, response)
 }
 
 func (c *Client) GetUserInfo(
@@ -558,8 +530,11 @@ func (c *Client) GetLoginBuffer(
 		return LoginBuffer{}, err
 	}
 
-	var decoded map[string]any
-	if err := decodeJSONResponse("login buffer response", responseBody, response, &decoded); err != nil {
+	decoded, err := decodeCredentialResponse(
+		"login buffer", responseBody, response,
+		creds.AccessToken, creds.RefreshToken, creds.OpenID, guid, unionID,
+	)
+	if err != nil {
 		return LoginBuffer{}, err
 	}
 

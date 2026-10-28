@@ -476,9 +476,13 @@ func (s *OAuthService) retryOAuthOnce(
 	if !errors.Is(runErr, native.ErrOAuthSessionExpired) {
 		return result, runErr
 	}
-	refreshed, err := s.sessions.RecoverExpired(ctx, account.UnionID, account.AccessToken)
+	rejectedAccessToken := account.AccessToken
+	if token := strings.TrimSpace(result.UpdatedSavedSession.TokenInfo.AccessToken); token != "" {
+		rejectedAccessToken = token
+	}
+	refreshed, err := s.sessions.RecoverExpired(ctx, account.UnionID, rejectedAccessToken)
 	if err != nil {
-		return result, fmt.Errorf("refresh oauth session credentials: %w", err)
+		return result, errors.Join(runErr, fmt.Errorf("refresh oauth session credentials: %w", err))
 	}
 	return retry(refreshed)
 }
