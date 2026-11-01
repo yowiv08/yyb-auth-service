@@ -120,6 +120,7 @@ func newHTTPServer(
 		yybClient,
 		logger,
 	)
+	renewCKService := service.NewRenewCKService(accountService, credentialManager, nativeEngine, yybClient, logger)
 
 	handler := httpapi.NewServer(
 		accountService,
@@ -128,6 +129,7 @@ func newHTTPServer(
 		scanService,
 		userInfoService,
 		oauthService,
+		renewCKService,
 		logger,
 		bearerToken,
 	).Handler()

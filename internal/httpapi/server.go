@@ -27,6 +27,7 @@ type Server struct {
 	scanService     *service.ScanService
 	userInfoService *service.UserInfoService
 	oauthService    *service.OAuthService
+	renewCKService  *service.RenewCKService
 	logger          *slog.Logger
 	bearerToken     string
 }
@@ -56,6 +57,7 @@ func NewServer(
 	scanService *service.ScanService,
 	userInfoService *service.UserInfoService,
 	oauthService *service.OAuthService,
+	renewCKService *service.RenewCKService,
 	logger *slog.Logger,
 	bearerToken string,
 ) *Server {
@@ -66,6 +68,7 @@ func NewServer(
 		scanService:     scanService,
 		userInfoService: userInfoService,
 		oauthService:    oauthService,
+		renewCKService:  renewCKService,
 		logger:          logger,
 		bearerToken:     bearerToken,
 	}
@@ -84,6 +87,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/getphone", s.handleGetPhone)
 	mux.HandleFunc("/api/transfer", s.handleTransfer)
 	mux.HandleFunc("/api/scan", s.handleScan)
+	mux.HandleFunc("/api/renewck", s.handleRenewCK)
 	return loggingMiddleware(s.logger, s.authMiddleware(mux))
 }
 

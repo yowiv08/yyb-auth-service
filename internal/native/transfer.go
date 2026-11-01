@@ -141,6 +141,7 @@ type TransferResult struct {
 	DecodedRaw          string                `json:"decoded_raw,omitempty"`
 	Plain               []byte                `json:"-"`
 	UpdatedSavedSession session.SavedSession  `json:"-"`
+	ManualAuthRet       *int                  `json:"-"`
 }
 
 type transferEnvelopeSpec struct {
@@ -326,6 +327,10 @@ func (e *Engine) Transfer(
 		return finish(), err
 	}
 	if !manualResult.OK {
+		if manualResult.HasBaseRet {
+			ret := manualResult.BaseRet
+			result.ManualAuthRet = &ret
+		}
 		return finish(), fmt.Errorf(
 			"manualauth failed baseRet=%d authSect=%t msg=%s",
 			manualResult.BaseRet,

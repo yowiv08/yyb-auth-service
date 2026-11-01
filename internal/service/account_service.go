@@ -93,26 +93,44 @@ func (s *AccountService) UpsertScannedSession(
 	ctx context.Context,
 	scanned ScannedOAuthSession,
 ) (model.Account, error) {
-	if scanned.UnionID == "" {
-		return model.Account{}, fmt.Errorf("scanned session missing unionid")
-	}
-	if scanned.OpenID == "" {
-		return model.Account{}, fmt.Errorf("scanned session missing openid")
-	}
-	if scanned.AccessToken == "" {
-		return model.Account{}, fmt.Errorf("scanned session missing access token")
-	}
-	if scanned.RefreshToken == "" {
-		return model.Account{}, fmt.Errorf("scanned session missing refresh token")
-	}
-	if scanned.GUID == "" {
-		return model.Account{}, fmt.Errorf("scanned session missing guid")
+	if err := validateScannedOAuthSession(scanned); err != nil {
+		return model.Account{}, err
 	}
 	unlock, err := s.operations.LockOperation(ctx, scanned.UnionID)
 	if err != nil {
 		return model.Account{}, fmt.Errorf("lock account operation: %w", err)
 	}
 	defer unlock()
+	return s.upsertScannedSessionLocked(ctx, scanned)
+}
+
+func validateScannedOAuthSession(scanned ScannedOAuthSession) error {
+	if scanned.UnionID == "" {
+		return fmt.Errorf("scanned session missing unionid")
+	}
+	if scanned.OpenID == "" {
+		return fmt.Errorf("scanned session missing openid")
+	}
+	if scanned.AccessToken == "" {
+		return fmt.Errorf("scanned session missing access token")
+	}
+	if scanned.RefreshToken == "" {
+		return fmt.Errorf("scanned session missing refresh token")
+	}
+	if scanned.GUID == "" {
+		return fmt.Errorf("scanned session missing guid")
+	}
+	return nil
+}
+
+// The caller must hold the account operation lock for the entire login flow.
+func (s *AccountService) upsertScannedSessionLocked(
+	ctx context.Context,
+	scanned ScannedOAuthSession,
+) (model.Account, error) {
+	if err := validateScannedOAuthSession(scanned); err != nil {
+		return model.Account{}, err
+	}
 
 	existing, hasExisting, err := s.lookupExistingAccount(ctx, scanned.UnionID)
 	if err != nil {
@@ -135,6 +153,13 @@ func (s *AccountService) UpsertScannedSession(
 	}
 
 	loginType := firstNonEmpty(scanned.LoginType, "WX")
+	loginBufferFetchedAt := ""
+	loginBufferParsed := scanned.LoginBufferParsed
+	if scanned.LoginBuffer != "" {
+		loginBufferFetchedAt = now.Format(time.RFC3339Nano)
+	} else {
+		loginBufferParsed = nil
+	}
 	saved := session.SavedSession{
 		SavedAt: now.Format(time.RFC3339Nano),
 		GUID:    scanned.GUID,
@@ -155,8 +180,8 @@ func (s *AccountService) UpsertScannedSession(
 			RefreshToken: scanned.RefreshToken,
 			LoginType:    loginType,
 			LoginBuffer:  scanned.LoginBuffer,
-			RefreshedAt:  now.Format(time.RFC3339Nano),
-			Parsed:       scanned.LoginBufferParsed,
+			RefreshedAt:  loginBufferFetchedAt,
+			Parsed:       loginBufferParsed,
 		},
 		ProtocolDevice: protocolDevice,
 		UnionID:        scanned.UnionID,
