@@ -31,11 +31,30 @@ func IsCredentialExpired(err error) bool {
 	if !errors.As(err, &businessErr) {
 		return false
 	}
-	switch businessErr.Code {
-	case 40001, 40014, 42001:
+	if isCredentialExpiredCode(businessErr.Code) {
 		return true
 	}
+	// YYB wraps the WeChat login-buffer rejection in code -101 and keeps the
+	// original status in the message instead of the top-level response code.
+	if businessErr.Operation == "login buffer" && businessErr.Code == -101 {
+		wrapped, ok := strings.CutPrefix(strings.TrimSpace(businessErr.Message), "GetLoginBuffer error [")
+		if ok {
+			codeText, _, closed := strings.Cut(wrapped, "]")
+			if code, err := strconv.Atoi(codeText); closed && err == nil && isCredentialExpiredCode(code) {
+				return true
+			}
+		}
+	}
 	return strings.TrimSpace(businessErr.Message) == "access_token and refresh_token exception"
+}
+
+func isCredentialExpiredCode(code int) bool {
+	switch code {
+	case 40001, 40014, 42001:
+		return true
+	default:
+		return false
+	}
 }
 
 func decodeCredentialResponse(
