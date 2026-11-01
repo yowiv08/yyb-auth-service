@@ -142,28 +142,32 @@ func (s *ExchangeService) ExchangeCode(
 	}
 
 	codeResult.Status = "succeeded"
-	s.logInfo(
-		ctx,
-		"小程序code获取成功",
+	successAttrs := []slog.Attr{
 		slog.String("unionid", accountUnionID),
 		slog.String("appid", appID),
 		slog.Int("type", codeType),
 		slog.String("code", codeResult.Code),
 		slog.Int64("duration_ms", time.Since(startedAt).Milliseconds()),
-	)
+	}
+	if summary := compactExchangeTrace(result.RawResultJSON); summary != "" {
+		successAttrs = append(successAttrs, slog.String("exchange", summary))
+	}
+	s.logInfo(ctx, "小程序code获取成功", successAttrs...)
 	return codeResult, nil
 }
 
 func compactExchangeTrace(raw string) string {
 	var trace struct {
-		ManualAuth struct {
-			OK             bool   `json:"ok"`
-			BaseRet        int    `json:"base_ret"`
-			HasAuthSect    bool   `json:"has_auth_sect"`
-			HasNetworkSect bool   `json:"has_network_sect"`
-			ErrMsg         string `json:"err_msg"`
+		ManualAuth *struct {
+			OK             bool                            `json:"ok"`
+			BaseRet        *int                            `json:"base_ret"`
+			HasAuthSect    bool                            `json:"has_auth_sect"`
+			HasNetworkSect bool                            `json:"has_network_sect"`
+			ErrMsg         string                          `json:"err_msg"`
+			Response       *native.ManualAuthResponseTrace `json:"response"`
 		} `json:"manualauth"`
-		JSLogin struct {
+		ManualAuthAttempts []json.RawMessage `json:"manualauth_attempts"`
+		JSLogin            struct {
 			OK                 bool   `json:"ok"`
 			Ret                int64  `json:"ret"`
 			ErrMsg             string `json:"errmsg"`
@@ -174,15 +178,28 @@ func compactExchangeTrace(raw string) string {
 			DecodedWithoutCode int    `json:"decoded_without_code"`
 		} `json:"jslogin"`
 	}
-	if json.Unmarshal([]byte(raw), &trace) != nil {
+	if json.Unmarshal([]byte(raw), &trace) != nil || trace.ManualAuth == nil {
 		return ""
 	}
+	baseRet := "unknown"
+	if trace.ManualAuth.BaseRet != nil {
+		baseRet = fmt.Sprint(*trace.ManualAuth.BaseRet)
+	} else if trace.ManualAuth.OK {
+		baseRet = "0"
+	}
 	manualAuth := fmt.Sprintf(
-		"manualauth{ret=%d auth=%t network=%t}",
-		trace.ManualAuth.BaseRet,
+		"manualauth{ret=%s auth=%t network=%t",
+		baseRet,
 		trace.ManualAuth.HasAuthSect,
 		trace.ManualAuth.HasNetworkSect,
 	)
+	if response := trace.ManualAuth.Response; response != nil {
+		manualAuth += fmt.Sprintf(" task=%d tag4=%d tag23=%d body_len=%d", response.TaskID, response.Tag4, response.Tag23, response.BodyLen)
+	}
+	if len(trace.ManualAuthAttempts) > 0 {
+		manualAuth += fmt.Sprintf(" attempts=%d", len(trace.ManualAuthAttempts))
+	}
+	manualAuth += "}"
 	jsLoginNotStarted := !trace.JSLogin.OK && trace.JSLogin.Ret == 0 &&
 		trace.JSLogin.ErrMsg == "" && trace.JSLogin.DecodeMode == "" &&
 		trace.JSLogin.AttemptCount == 0

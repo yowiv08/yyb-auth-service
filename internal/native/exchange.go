@@ -3,6 +3,7 @@ package native
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -39,11 +40,12 @@ type Result struct {
 }
 
 type exchangeTrace struct {
-	Endpoint   *LonglinkEndpoint `json:"endpoint,omitempty"`
-	Fresh      freshTrace        `json:"fresh"`
-	ManualAuth manualAuthTrace   `json:"manualauth"`
-	SessionKey sessionKeyTrace   `json:"session_key"`
-	JSLogin    jsLoginTrace      `json:"jslogin"`
+	Endpoint           *LonglinkEndpoint `json:"endpoint,omitempty"`
+	Fresh              freshTrace        `json:"fresh"`
+	ManualAuth         manualAuthTrace   `json:"manualauth"`
+	ManualAuthAttempts []manualAuthTrace `json:"manualauth_attempts,omitempty"`
+	SessionKey         sessionKeyTrace   `json:"session_key"`
+	JSLogin            jsLoginTrace      `json:"jslogin"`
 }
 
 type httpLoginCodeTrace struct {
@@ -62,13 +64,14 @@ type freshTrace struct {
 }
 
 type manualAuthTrace struct {
-	OK             bool   `json:"ok"`
-	BaseRet        int    `json:"base_ret,omitempty"`
-	ErrMsg         string `json:"err_msg,omitempty"`
-	HasAuthSect    bool   `json:"has_auth_sect"`
-	HasNetworkSect bool   `json:"has_network_sect"`
-	UIN            string `json:"uin,omitempty"`
-	SessionBlobLen int    `json:"session_blob_len,omitempty"`
+	OK             bool                     `json:"ok"`
+	BaseRet        *int                     `json:"base_ret,omitempty"`
+	ErrMsg         string                   `json:"err_msg,omitempty"`
+	HasAuthSect    bool                     `json:"has_auth_sect"`
+	HasNetworkSect bool                     `json:"has_network_sect"`
+	UIN            string                   `json:"uin,omitempty"`
+	SessionBlobLen int                      `json:"session_blob_len,omitempty"`
+	Response       *ManualAuthResponseTrace `json:"response,omitempty"`
 }
 
 type sessionKeyTrace struct {
@@ -139,6 +142,49 @@ func (e *Engine) ExchangeCode(
 	account model.Account,
 	appID string,
 ) (Result, error) {
+	return exchangeCodeWithManualAuthRetry(ctx, func() (Result, error) {
+		return e.exchangeCodeAttempt(ctx, account, appID)
+	})
+}
+
+func exchangeCodeWithManualAuthRetry(ctx context.Context, attempt func() (Result, error)) (Result, error) {
+	authAttempts := make([]manualAuthTrace, 0, 2)
+	var result Result
+	var err error
+	var trace exchangeTrace
+	for index := 0; index < 2; index++ {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return result, contextErr
+		}
+		result, err = attempt()
+		var attemptTrace exchangeTrace
+		if json.Unmarshal([]byte(result.RawResultJSON), &attemptTrace) == nil {
+			trace = attemptTrace
+			authAttempts = append(authAttempts, attemptTrace.ManualAuth)
+		}
+		if len(authAttempts) > 0 {
+			trace.ManualAuthAttempts = authAttempts
+			result.RawResultJSON = marshalTrace(trace)
+		}
+		var packetErr *manualAuthPacketError
+		// This explicit rejection happens before JSLogin. A new attempt fetches
+		// its own one-use login buffer, connection and HybridECDH keys.
+		retry := index == 0 && errors.As(err, &packetErr) &&
+			result.Code == "" && trace.JSLogin.AttemptCount == 0 &&
+			packetErr.Response.TaskID == manualAuthCmdID && packetErr.Response.TaskType == manualAuthTaskType &&
+			packetErr.Response.Tag4 == 0 && packetErr.Response.Tag23 == -20008 && packetErr.Response.BodyLen == 0
+		if !retry || ctx.Err() != nil {
+			return result, err
+		}
+	}
+	return result, err
+}
+
+func (e *Engine) exchangeCodeAttempt(
+	ctx context.Context,
+	account model.Account,
+	appID string,
+) (Result, error) {
 	account, fresh, err := e.freshLoginBuffer(ctx, account)
 	if err != nil {
 		return Result{}, err
@@ -200,22 +246,29 @@ func (e *Engine) ExchangeCode(
 	}
 
 	manualResult, err := decodeManualAuthStage(manualStage, manualRequest.RequestState, &saved)
-	if err != nil {
-		return finish(""), err
-	}
 	trace.ManualAuth = manualAuthTrace{
 		OK:             manualResult.OK,
-		BaseRet:        manualResult.BaseRet,
 		ErrMsg:         manualResult.ErrMsg,
 		HasAuthSect:    manualResult.HasAuthSect,
 		HasNetworkSect: manualResult.HasNetworkSect,
 		UIN:            manualResult.UIN,
 		SessionBlobLen: len(manualResult.SessionBlob),
+		Response:       manualResult.Response,
+	}
+	if manualResult.HasBaseRet {
+		trace.ManualAuth.BaseRet = &manualResult.BaseRet
+	}
+	if err != nil {
+		return finish(""), err
 	}
 	if !manualResult.OK {
+		baseRet := "unknown"
+		if manualResult.HasBaseRet {
+			baseRet = fmt.Sprint(manualResult.BaseRet)
+		}
 		return finish(""), fmt.Errorf(
-			"manualauth failed baseRet=%d authSect=%t msg=%s",
-			manualResult.BaseRet,
+			"manualauth failed baseRet=%s authSect=%t msg=%s",
+			baseRet,
 			manualResult.HasAuthSect,
 			firstNonEmpty(manualResult.ErrMsg, "unknown"),
 		)

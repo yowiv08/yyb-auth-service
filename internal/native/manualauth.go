@@ -61,6 +61,7 @@ type Type5Session struct {
 type ManualAuthResult struct {
 	OK             bool
 	BaseRet        int
+	HasBaseRet     bool
 	ErrMsg         string
 	HasAuthSect    bool
 	HasNetworkSect bool
@@ -69,6 +70,26 @@ type ManualAuthResult struct {
 	Plain          []byte
 	SessionBlob    []byte
 	ProtocolTDI    map[string]any
+	Response       *ManualAuthResponseTrace
+}
+
+type ManualAuthResponseTrace struct {
+	RecordCount int    `json:"record_count"`
+	Sequence    uint64 `json:"sequence"`
+	TaskID      uint32 `json:"task_id"`
+	TaskType    int32  `json:"task_type"`
+	Tag4        int64  `json:"tag4"`
+	Tag23       int64  `json:"tag23"`
+	BodyLen     int    `json:"body_len"`
+}
+
+type manualAuthPacketError struct {
+	Response ManualAuthResponseTrace
+}
+
+func (e *manualAuthPacketError) Error() string {
+	return fmt.Sprintf("manualauth upstream packet rejected task=%d tag4=%d tag23=%d body_len=%d",
+		e.Response.TaskID, e.Response.Tag4, e.Response.Tag23, e.Response.BodyLen)
 }
 
 type hybridRequestState struct {
@@ -280,41 +301,62 @@ func decodeManualAuthStage(
 	requestState hybridRequestState,
 	saved *session.SavedSession,
 ) (ManualAuthResult, error) {
+	result := ManualAuthResult{}
 	var body []byte
-	for _, candidate := range stage.HybridBodies {
-		if len(candidate) > 0 {
-			body = candidate
+	for _, row := range stage.Decoded {
+		if row.App.TaskID != manualAuthCmdID || row.App.TaskType != manualAuthTaskType {
+			continue
+		}
+		pack, err := parseLonglinkPackHeader(row.App.OuterFrame)
+		if err != nil {
+			return result, fmt.Errorf("decode manualauth response packet: %w", err)
+		}
+		result.Response = &ManualAuthResponseTrace{
+			RecordCount: len(stage.Decoded), Sequence: row.Seq,
+			TaskID: row.App.TaskID, TaskType: row.App.TaskType,
+			Tag4: pack.IntTags[4], Tag23: pack.IntTags[23], BodyLen: len(pack.Body),
+		}
+		if result.Response.Tag4 != 0 || result.Response.Tag23 != 0 {
+			return result, &manualAuthPacketError{Response: *result.Response}
+		}
+		if len(pack.Body) > 0 {
+			body = pack.Body
 			break
 		}
 	}
+	if len(stage.Decoded) == 0 {
+		for _, candidate := range stage.HybridBodies {
+			if len(candidate) > 0 {
+				body = candidate
+				break
+			}
+		}
+	}
 	if len(body) == 0 {
-		return ManualAuthResult{
-			OK:             false,
-			HasAuthSect:    false,
-			HasNetworkSect: false,
-		}, nil
+		return result, fmt.Errorf("manualauth response body missing: decoded_records=%d baseRet=unknown", len(stage.Decoded))
 	}
 
 	block, err := decryptHybridLZ4Block(body, requestState)
 	if err != nil {
-		return ManualAuthResult{}, err
+		return result, err
 	}
 
 	plain, err := lz4DecompressBlock(block)
 	if err != nil {
-		return ManualAuthResult{}, fmt.Errorf("decompress manualauth lz4 block: %w", err)
+		return result, fmt.Errorf("decompress manualauth lz4 block: %w", err)
 	}
 
 	parsed, err := applyManualAuthPlaintext(plain, saved)
+	parsed.Response = result.Response
 	if err != nil {
-		return ManualAuthResult{}, err
+		return parsed, err
 	}
 
 	var sessionBlob []byte
-	if parsed.HasAuthSect || parsed.BaseRet == 0 {
+	if parsed.HasBaseRet && parsed.BaseRet == 0 && parsed.HasAuthSect {
 		sessionBlob, err = extractSessionBlobFromResponse(plain)
 		if err != nil {
-			return ManualAuthResult{}, err
+			return parsed, err
 		}
 		saved.ProtocolTDI["sessionBlobB64"] = base64.StdEncoding.EncodeToString(sessionBlob)
 	}
@@ -453,6 +495,7 @@ func applyManualAuthPlaintext(
 	}
 
 	baseRet := 0
+	hasBaseRet := false
 	errMsg := ""
 	if baseRaw := firstBytes(top, 1); len(baseRaw) > 0 {
 		baseFields, decodeErr := pbDecode(baseRaw)
@@ -461,10 +504,14 @@ func applyManualAuthPlaintext(
 		}
 		if value, ok := firstVarint(baseFields, 1); ok {
 			baseRet = int(value)
+			hasBaseRet = true
 		}
 		if text := firstBytes(baseFields, 2); len(text) > 0 {
 			errMsg = string(text)
 		}
+	}
+	if !hasBaseRet {
+		return ManualAuthResult{ErrMsg: errMsg}, fmt.Errorf("manualauth BaseResponse.ret missing")
 	}
 
 	unifyFields := map[int][]PBValue{}
@@ -542,8 +589,9 @@ func applyManualAuthPlaintext(
 	saved.ProtocolTDI = protocolTDI
 
 	return ManualAuthResult{
-		OK:             baseRet == 0 && hasAuthSect,
+		OK:             hasBaseRet && baseRet == 0 && hasAuthSect,
 		BaseRet:        baseRet,
+		HasBaseRet:     hasBaseRet,
 		ErrMsg:         errMsg,
 		HasAuthSect:    hasAuthSect,
 		HasNetworkSect: hasNetworkSect,
