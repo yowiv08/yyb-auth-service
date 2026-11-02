@@ -54,12 +54,12 @@ func (s *CloudService) OperateWXData(
 	)
 
 	if strings.TrimSpace(accountUnionID) == "" {
-		err := fmt.Errorf("account unionid required")
+		err := inputError("unionid 必填")
 		s.logError(ctx, "operateWXData请求失败", err, startedAt)
 		return native.OperateWXDataResult{}, err
 	}
 	if strings.TrimSpace(appID) == "" {
-		err := fmt.Errorf("appid required")
+		err := inputError("appid 必填")
 		s.logError(ctx, "operateWXData请求失败", err, startedAt)
 		return native.OperateWXDataResult{}, err
 	}
@@ -147,13 +147,13 @@ func (s *CloudService) GetPhoneNumber(
 
 	unionID := strings.TrimSpace(accountUnionID)
 	if unionID == "" {
-		err := fmt.Errorf("account unionid required")
+		err := inputError("unionid 必填")
 		s.logError(ctx, "getPhoneNumber请求失败", err, startedAt)
 		return native.PhoneResult{}, err
 	}
 	targetAppID := strings.TrimSpace(appID)
 	if targetAppID == "" {
-		err := fmt.Errorf("appid required")
+		err := inputError("appid 必填")
 		s.logError(ctx, "getPhoneNumber请求失败", err, startedAt)
 		return native.PhoneResult{}, err
 	}
@@ -171,7 +171,7 @@ func (s *CloudService) GetPhoneNumber(
 		return native.PhoneResult{}, err
 	}
 	if strings.TrimSpace(account.OpenID) == "" {
-		err := fmt.Errorf("account missing openid")
+		err := inputError("账号缺少 openid")
 		s.logError(ctx, "getPhoneNumber请求失败", err, startedAt,
 			slog.String("unionid", unionID),
 		)

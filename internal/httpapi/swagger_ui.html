@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="yyb-auth-service Swagger UI" />
+  <meta name="description" content="yyb-auth-service 接口文档与调试页面" />
   <title>yyb-auth-service API</title>
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.32.8/swagger-ui.css" />
   <style>
@@ -420,7 +420,7 @@
         }
       } catch (err) {
         stopScanPolling();
-        dialog.status.textContent = "轮询失败";
+        dialog.status.textContent = "查询扫码状态失败";
         dialog.status.dataset.tone = "error";
         dialog.result.dataset.open = "true";
         dialog.result.textContent = JSON.stringify({
@@ -434,17 +434,17 @@
         case "waiting":
           return "等待扫码";
         case "scanned":
-          return "已扫码";
+          return "已扫码，请在手机上确认";
         case "authorized":
-          return "已确认";
+          return "已确认，正在保存账号";
         case "completed":
-          return "已完成";
+          return "已完成，账号已保存";
         case "canceled":
           return "已取消";
         case "expired":
-          return "已过期";
+          return "二维码已过期";
         case "failed":
-          return "失败";
+          return "登录失败";
         default:
           return status ? String(status) : "等待扫码";
       }

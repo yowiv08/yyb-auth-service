@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 
 	"yyb-auth-service/internal/native"
 	"yyb-auth-service/internal/service"
+	"yyb-auth-service/internal/store"
 )
 
 type Server struct {
@@ -98,7 +100,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		s.deleteUser(w, r)
 	default:
-		writeMethodNotAllowed(w, "GET or POST")
+		writeMethodNotAllowed(w, "GET 或 POST")
 	}
 }
 
@@ -129,7 +131,7 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	result, err := s.accountService.Delete(r.Context(), unionID)
 	if err != nil {
 		if errors.Is(err, service.ErrAccountNotFound) {
-			writeError(w, http.StatusNotFound, err)
+			writeError(w, http.StatusNotFound, fmt.Errorf("unionid 对应账号不存在"))
 			return
 		}
 		writeError(w, http.StatusInternalServerError, err)
@@ -175,7 +177,7 @@ func (s *Server) handleCode(w http.ResponseWriter, r *http.Request) {
 
 	run, err := s.exchangeService.ExchangeCode(r.Context(), unionID, appID, *body.Type)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeServiceError(w, err)
 		return
 	}
 
@@ -252,7 +254,7 @@ func (s *Server) handleOperateWXData(w http.ResponseWriter, r *http.Request) {
 		operateWXDataMode(requestType),
 	)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeServiceError(w, err)
 		return
 	}
 
@@ -290,7 +292,7 @@ func (s *Server) handleGetUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.userInfoService.Get(r.Context(), unionID, body.Lang)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeServiceError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, makeUserInfoResponse(result, time.Since(startedAt)))
@@ -324,7 +326,7 @@ func (s *Server) handleGetPhone(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.cloudService.GetPhoneNumber(r.Context(), unionID, appID)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeServiceError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, makePhoneResponse(result, time.Since(startedAt)))
@@ -422,6 +424,9 @@ func (s *Server) getScan(w http.ResponseWriter, r *http.Request) {
 
 	scan, err := s.scanService.Get(r.Context(), scanID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err = fmt.Errorf("scan_id 对应扫码会话不存在")
+		}
 		writeError(w, http.StatusNotFound, err)
 		return
 	}
@@ -441,7 +446,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		w.Header().Set("WWW-Authenticate", "Bearer")
-		writeError(w, http.StatusUnauthorized, fmt.Errorf("unauthorized"))
+		writeError(w, http.StatusUnauthorized, fmt.Errorf("缺少或无效的 Bearer Token"))
 	})
 }
 
@@ -470,6 +475,27 @@ func requiredString(value string, name string) (string, error) {
 	return trimmed, nil
 }
 
+// writeServiceError maps a service failure to the status the API documents:
+// 400 for input or account-state problems the caller can fix, 404 for a
+// missing account, 504 for a deadline hit while waiting on the account lock or
+// an upstream call, and 502 for every other protocol or upstream failure.
+func writeServiceError(w http.ResponseWriter, err error) {
+	var validation *service.ValidationError
+	switch {
+	case errors.As(err, &validation):
+		writeError(w, http.StatusBadRequest, validation)
+	case errors.Is(err, sql.ErrNoRows),
+		errors.Is(err, store.ErrAccountNotFound),
+		errors.Is(err, service.ErrAccountNotFound),
+		errors.Is(err, service.ErrTransferAccountNotFound):
+		writeError(w, http.StatusNotFound, fmt.Errorf("unionid 对应账号不存在"))
+	case errors.Is(err, context.DeadlineExceeded):
+		writeError(w, http.StatusGatewayTimeout, err)
+	default:
+		writeError(w, http.StatusBadGateway, err)
+	}
+}
+
 func scanIDFromQuery(r *http.Request) (int64, error) {
 	raw := strings.TrimSpace(r.URL.Query().Get("scan_id"))
 	if raw == "" {
@@ -486,23 +512,23 @@ func scanIDFromQuery(r *http.Request) (int64, error) {
 func decodeJSON(r *http.Request, target any) error {
 	const requestBodyLimit = 16 << 20
 	if r.Body == nil {
-		return fmt.Errorf("decode json: empty request body")
+		return fmt.Errorf("请求体为空")
 	}
 	defer r.Body.Close()
 	if r.ContentLength > requestBodyLimit {
-		return fmt.Errorf("decode json: request body exceeds %d bytes", requestBodyLimit)
+		return fmt.Errorf("请求体不能超过 %d 字节", requestBodyLimit)
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(nil, r.Body, requestBodyLimit))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("decode json: %w", err)
+		return fmt.Errorf("请求体不是合法的 JSON 对象: %w", err)
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
 		if err != nil {
-			return fmt.Errorf("decode json: %w", err)
+			return fmt.Errorf("请求体不是合法的 JSON 对象: %w", err)
 		}
-		return fmt.Errorf("decode json: request body must contain a single JSON value")
+		return fmt.Errorf("请求体只能包含一个 JSON 值")
 	}
 	return nil
 }
@@ -515,7 +541,7 @@ func operateWXDataString(raw json.RawMessage) (string, error) {
 
 	var compact bytes.Buffer
 	if err := json.Compact(&compact, raw); err != nil {
-		return "", fmt.Errorf("compact operatewxdata data: %w", err)
+		return "", fmt.Errorf("data 不是合法的 JSON: %w", err)
 	}
 	return compact.String(), nil
 }
@@ -558,7 +584,7 @@ func buildQBaseCallFunctionData(
 
 	dataString, err := operateWXDataString(rawData)
 	if err != nil {
-		return "", fmt.Errorf("encode function data: %w", err)
+		return "", err
 	}
 
 	currentTime := now.UnixMilli()
@@ -706,7 +732,7 @@ func writeOAuthError(w http.ResponseWriter, status int, err error) {
 
 func writeMethodNotAllowed(w http.ResponseWriter, method string) {
 	writeJSON(w, http.StatusMethodNotAllowed, map[string]string{
-		"error": fmt.Sprintf("use %s", method),
+		"error": fmt.Sprintf("仅支持 %s", method),
 	})
 }
 

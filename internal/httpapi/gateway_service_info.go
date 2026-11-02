@@ -76,7 +76,7 @@ func buildQBaseGatewayServiceInfoData(
 	decoder := json.NewDecoder(bytes.NewReader(rawData))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil {
-		return operateWXDataPreparedData{}, fmt.Errorf("decode gateway service info data: %w", err)
+		return operateWXDataPreparedData{}, fmt.Errorf("type=3 的 data 不合法: %w", err)
 	}
 
 	system := strings.TrimSpace(input.System)
@@ -92,7 +92,7 @@ func buildQBaseGatewayServiceInfoData(
 		scene = gatewayDefaultScene
 	}
 	if scene < 0 {
-		return operateWXDataPreparedData{}, fmt.Errorf("data.scene must be greater than 0")
+		return operateWXDataPreparedData{}, fmt.Errorf("data.scene 不能为负数")
 	}
 	sdkVersion := strings.TrimSpace(input.SDKVersion)
 	if sdkVersion == "" {
@@ -103,7 +103,7 @@ func buildQBaseGatewayServiceInfoData(
 		env = gatewayDefaultEnv
 	}
 	if env < 0 || env > 255 {
-		return operateWXDataPreparedData{}, fmt.Errorf("data.env must be between 1 and 255")
+		return operateWXDataPreparedData{}, fmt.Errorf("data.env 必须在 1 到 255 之间")
 	}
 
 	clientPrivateKey, clientKX, err := gatewayClientKeyPair(input)
@@ -191,7 +191,7 @@ func gatewayClientKeyPair(input gatewayServiceInfoInput) (privateHex, publicHex 
 	if privateHex == "" {
 		if publicHex != "" {
 			if err := validateX25519PublicKey(publicHex); err != nil {
-				return "", "", fmt.Errorf("invalid data.kx: %w", err)
+				return "", "", fmt.Errorf("data.kx 不是合法的 X25519 公钥: %w", err)
 			}
 			return "", strings.ToLower(publicHex), nil
 		}
@@ -205,21 +205,21 @@ func gatewayClientKeyPair(input gatewayServiceInfoInput) (privateHex, publicHex 
 
 	privateBytes, err := hex.DecodeString(privateHex)
 	if err != nil {
-		return "", "", fmt.Errorf("invalid data.client_private_key: %w", err)
+		return "", "", fmt.Errorf("data.client_private_key 不是合法的 X25519 私钥: %w", err)
 	}
 	privateKey, err := ecdh.X25519().NewPrivateKey(privateBytes)
 	if err != nil {
-		return "", "", fmt.Errorf("invalid data.client_private_key: %w", err)
+		return "", "", fmt.Errorf("data.client_private_key 不是合法的 X25519 私钥: %w", err)
 	}
 	derivedPublicHex := hex.EncodeToString(privateKey.PublicKey().Bytes())
 	if publicHex == "" {
 		return strings.ToLower(privateHex), derivedPublicHex, nil
 	}
 	if err := validateX25519PublicKey(publicHex); err != nil {
-		return "", "", fmt.Errorf("invalid data.kx: %w", err)
+		return "", "", fmt.Errorf("data.kx 不是合法的 X25519 公钥: %w", err)
 	}
 	if !strings.EqualFold(publicHex, derivedPublicHex) {
-		return "", "", fmt.Errorf("data.kx does not match data.client_private_key")
+		return "", "", fmt.Errorf("data.kx 与 data.client_private_key 不匹配")
 	}
 	return strings.ToLower(privateHex), strings.ToLower(publicHex), nil
 }

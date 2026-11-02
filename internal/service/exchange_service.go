@@ -66,7 +66,7 @@ func (s *ExchangeService) ExchangeCode(
 	)
 
 	if codeType != CodeTypeLegacy && codeType != CodeTypeHTTP {
-		err := fmt.Errorf("invalid code type %d", codeType)
+		err := inputError("type 必须是 1 或 2")
 		s.logError(ctx, "小程序code获取失败", err, startedAt)
 		return model.CodeResult{}, err
 	}
@@ -227,7 +227,7 @@ func (s *ExchangeService) exchangeByType(
 	case CodeTypeHTTP:
 		return s.exchangeFast(ctx, account, appID)
 	default:
-		return native.Result{}, fmt.Errorf("invalid code type %d", codeType)
+		return native.Result{}, inputError("type 必须是 1 或 2")
 	}
 }
 

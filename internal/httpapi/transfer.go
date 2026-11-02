@@ -2,10 +2,8 @@ package httpapi
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -13,7 +11,6 @@ import (
 	"time"
 
 	"yyb-auth-service/internal/native"
-	"yyb-auth-service/internal/service"
 )
 
 const httpDefaultTransferRoute uint32 = 1029
@@ -120,7 +117,7 @@ func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.cloudService.Transfer(r.Context(), unionID, input)
 	if err != nil {
-		writeTransferError(w, err)
+		writeServiceError(w, err)
 		return
 	}
 
@@ -141,17 +138,6 @@ func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request) {
 		Response:      result.Response,
 		Duration:      formatDurationHMS(time.Since(startedAt)),
 	})
-}
-
-func writeTransferError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, service.ErrTransferAccountNotFound):
-		writeError(w, http.StatusNotFound, err)
-	case errors.Is(err, context.DeadlineExceeded):
-		writeError(w, http.StatusGatewayTimeout, err)
-	default:
-		writeError(w, http.StatusBadGateway, err)
-	}
 }
 
 func prepareNativeTransferInput(

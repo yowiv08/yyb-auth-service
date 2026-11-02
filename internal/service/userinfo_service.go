@@ -72,7 +72,7 @@ func (s *UserInfoService) Get(
 ) (UserInfoResult, error) {
 	unionID := strings.TrimSpace(accountUnionID)
 	if unionID == "" {
-		return UserInfoResult{}, fmt.Errorf("unionid 必填")
+		return UserInfoResult{}, inputError("unionid 必填")
 	}
 	normalizedLang, err := normalizeUserInfoLang(lang)
 	if err != nil {
@@ -91,10 +91,10 @@ func (s *UserInfoService) Get(
 		return UserInfoResult{}, err
 	}
 	if strings.TrimSpace(account.OpenID) == "" {
-		return UserInfoResult{}, fmt.Errorf("账号缺少 openid")
+		return UserInfoResult{}, inputError("账号缺少 openid")
 	}
 	if strings.TrimSpace(account.AccessToken) == "" {
-		return UserInfoResult{}, fmt.Errorf("账号缺少 access_token")
+		return UserInfoResult{}, inputError("账号缺少 access_token")
 	}
 
 	userInfo, err := s.client.GetUserInfo(
@@ -154,7 +154,7 @@ func normalizeUserInfoLang(lang string) (string, error) {
 	case "zh_CN", "zh_TW", "en":
 		return trimmed, nil
 	default:
-		return "", fmt.Errorf("lang 仅支持 zh_CN、zh_TW 或 en")
+		return "", inputError("lang 仅支持 zh_CN、zh_TW 或 en")
 	}
 }
 
