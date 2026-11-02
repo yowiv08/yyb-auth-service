@@ -15,9 +15,11 @@ import (
 )
 
 const (
-	manualAuthCmdID    = 3453
-	manualAuthTaskType = 2
-	defaultTimeout     = 12 * time.Second
+	manualAuthCmdID        = 3453
+	manualAuthTaskType     = 2
+	manualAuthMaxAttempts  = 3
+	manualAuthRetryBackoff = time.Second
+	defaultTimeout         = 12 * time.Second
 )
 
 type Engine struct {
@@ -148,17 +150,18 @@ func (e *Engine) ExchangeCode(
 }
 
 func exchangeCodeWithManualAuthRetry(ctx context.Context, attempt func() (Result, error)) (Result, error) {
-	authAttempts := make([]manualAuthTrace, 0, 2)
+	authAttempts := make([]manualAuthTrace, 0, manualAuthMaxAttempts)
 	var result Result
 	var err error
 	var trace exchangeTrace
-	for index := 0; index < 2; index++ {
+	for index := 0; index < manualAuthMaxAttempts; index++ {
 		if contextErr := ctx.Err(); contextErr != nil {
 			return result, contextErr
 		}
 		result, err = attempt()
 		var attemptTrace exchangeTrace
-		if json.Unmarshal([]byte(result.RawResultJSON), &attemptTrace) == nil {
+		traceDecoded := json.Unmarshal([]byte(result.RawResultJSON), &attemptTrace) == nil
+		if traceDecoded {
 			trace = attemptTrace
 			authAttempts = append(authAttempts, attemptTrace.ManualAuth)
 		}
@@ -169,12 +172,25 @@ func exchangeCodeWithManualAuthRetry(ctx context.Context, attempt func() (Result
 		var packetErr *manualAuthPacketError
 		// This explicit rejection happens before JSLogin. A new attempt fetches
 		// its own one-use login buffer, connection and HybridECDH keys.
-		retry := index == 0 && errors.As(err, &packetErr) &&
-			result.Code == "" && trace.JSLogin.AttemptCount == 0 &&
+		retry := index+1 < manualAuthMaxAttempts && traceDecoded && errors.As(err, &packetErr) &&
+			result.Code == "" && !attemptTrace.ManualAuth.OK && attemptTrace.ManualAuth.Response != nil &&
+			*attemptTrace.ManualAuth.Response == packetErr.Response && attemptTrace.JSLogin.AttemptCount == 0 &&
 			packetErr.Response.TaskID == manualAuthCmdID && packetErr.Response.TaskType == manualAuthTaskType &&
 			packetErr.Response.Tag4 == 0 && packetErr.Response.Tag23 == -20008 && packetErr.Response.BodyLen == 0
-		if !retry || ctx.Err() != nil {
+		if !retry {
 			return result, err
+		}
+		if contextErr := ctx.Err(); contextErr != nil {
+			return result, contextErr
+		}
+		// Space out consecutive explicit rejections, within the caller's deadline.
+		// Wait before fetching the next one-use buffer so it is used immediately.
+		timer := time.NewTimer(time.Duration(index+1) * manualAuthRetryBackoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return result, ctx.Err()
+		case <-timer.C:
 		}
 	}
 	return result, err
@@ -288,6 +304,8 @@ func (e *Engine) exchangeCodeAttempt(
 		return finish(""), err
 	}
 
+	// Mark the business request before sending, including uncertain write/read failures.
+	trace.JSLogin.AttemptCount = 1
 	jsStage, err := longlink.SendPackedBody(ctx, PackedStage{
 		Profile:      jsRequest.Profile,
 		IdentityMode: "account",
