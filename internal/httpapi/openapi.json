@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "yyb-auth-service API",
-    "description": "应用宝扫码登录、账号管理、微信用户资料、小程序 code、公众号网页授权、手机号、operateWXData 和通用 Transfer 服务。",
+    "description": "应用宝扫码登录、CK 换新、账号管理、微信用户资料、小程序 code、公众号网页授权、手机号、operateWXData 和通用 Transfer 服务。",
     "version": "2.0.0"
   },
   "servers": [
@@ -43,6 +43,10 @@
     {
       "name": "Scan",
       "description": "应用宝扫码登录会话"
+    },
+    {
+      "name": "RenewCK",
+      "description": "使用已保存的微信登录态换发应用宝 CK"
     }
   ],
   "paths": {
@@ -325,6 +329,183 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/renewck": {
+      "post": {
+        "tags": [
+          "RenewCK"
+        ],
+        "summary": "使用旧登录态换发应用宝 CK",
+        "description": "仅传 unionid，服务使用数据库中保存的旧 CK 和设备登录态，自动完成应用宝授权、获取 code 和兑换新 CK。AppID 固定为 wxd44977328b36e647，调用方无需提供 token、授权 URL、UUID 或 code。\n\n新 CK 先保存到数据库，再获取微信用户信息校验 openid、unionid 是否与原账号一致。换新后的校验仅获取用户信息；授权阶段仍需使用旧 CK 获取一次性登录 buffer。\n\nck_updated=true 表示新 CK 已保存。用户信息请求失败、业务错误或身份不匹配时返回 HTTP 502、CK_VALIDATION_FAILED，同时保留新 CK，可通过 GET /api/users 读取。此时不会恢复旧 CK 或自动再次换新。\n\n总业务时限为 75 秒，授权确认后的 code 轮询最多 20 秒。进入确认阶段后，即使调用方断开连接，服务仍会在剩余时限内完成兑换和保存。",
+        "operationId": "renewCK",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenewCKRequest"
+              },
+              "examples": {
+                "renewByUnionID": {
+                  "summary": "按已有账号的 unionid 换新 CK",
+                  "value": {
+                    "unionid": "o_xxx"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "新 CK 已保存，用户信息正常且身份与原账号一致。返回的新凭据即为数据库中的凭据。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenewCKResponse"
+                },
+                "example": {
+                  "ok": true,
+                  "ck_updated": true,
+                  "unionid": "o_xxx",
+                  "openid": "openid-value",
+                  "appid": "wxd44977328b36e647",
+                  "guid": "new-guid",
+                  "login_type": "WX",
+                  "access_token": "NEW_ACCESS_TOKEN",
+                  "refresh_token": "NEW_REFRESH_TOKEN",
+                  "ck_expires_at": "Wed, 02 Dec 2026 00:00:00 GMT",
+                  "scope": "snsapi_login,snsapi_runtime_pcsdk",
+                  "userinfo_ok": true,
+                  "duration": "8S"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST：JSON 格式错误、缺少或传入空 unionid，或包含 unionid 以外的请求字段。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenewCKErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "缺少或错误的 Bearer token。鉴权失败返回通用错误对象，不包含 ck_updated。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ACCOUNT_NOT_FOUND：unionid 对应账号不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenewCKErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "OLD_SESSION_INVALID：旧登录态失效或缺少必要凭据、设备信息，需要重新扫码；ACCOUNT_MISMATCH：兑换出的 openid 与原账号不匹配，新凭据未保存。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenewCKErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "QRCONNECT_REJECTED：微信拒绝授权，或授权会话被取消、过期。wechat_ret 在上游返回业务错误码时提供。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenewCKErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "CK_SAVE_FAILED：读取账号、保存登录态、新 CK 提交或保存结果核对失败。以 ck_updated 判断新 CK 是否已提交；若提交后的读取或核对失败，该值仍为 true。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenewCKErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "CK_RENEW_UPSTREAM_ERROR：授权、轮询或兑换上游异常，或返回的凭据不完整；CK_VALIDATION_FAILED：新 CK 已保存，但用户信息请求失败、业务错误或身份缺失、不匹配。后者始终返回 ck_updated=true，数据库保留新 CK。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenewCKErrorResponse"
+                },
+                "examples": {
+                  "userinfoValidationFailed": {
+                    "summary": "新 CK 已保存，用户信息校验失败",
+                    "value": {
+                      "ok": false,
+                      "ck_updated": true,
+                      "unionid": "o_xxx",
+                      "appid": "wxd44977328b36e647",
+                      "userinfo_ok": false,
+                      "error": {
+                        "code": "CK_VALIDATION_FAILED",
+                        "stage": "userinfo",
+                        "message": "新 CK 已保存，用户信息校验失败"
+                      },
+                      "duration": "8S"
+                    }
+                  },
+                  "exchangeFailed": {
+                    "summary": "兑换上游异常，新 CK 未保存",
+                    "value": {
+                      "ok": false,
+                      "ck_updated": false,
+                      "unionid": "o_xxx",
+                      "appid": "wxd44977328b36e647",
+                      "userinfo_ok": false,
+                      "error": {
+                        "code": "CK_RENEW_UPSTREAM_ERROR",
+                        "stage": "exchange",
+                        "message": "换新 CK 的上游请求失败"
+                      },
+                      "duration": "8S"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "CK_RENEW_TIMEOUT：换新流程超时或在确认前被取消。若新 CK 保存后的用户信息请求超时，返回 HTTP 502、CK_VALIDATION_FAILED 和 ck_updated=true。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenewCKErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -872,6 +1053,198 @@
           "unionid",
           "deleted",
           "detached_scan_sessions"
+        ]
+      },
+      "RenewCKRequest": {
+        "type": "object",
+        "properties": {
+          "unionid": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S",
+            "description": "数据库中已有微信账号的 unionid。可从 GET /api/users 获取。",
+            "example": "o_xxx"
+          }
+        },
+        "required": [
+          "unionid"
+        ],
+        "additionalProperties": false
+      },
+      "RenewCKResponse": {
+        "type": "object",
+        "description": "新 CK 已保存且用户信息校验通过时的成功返回。",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "ck_updated": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "本次换发的新 CK 已提交到数据库。"
+          },
+          "unionid": {
+            "type": "string",
+            "description": "原账号的 unionid。"
+          },
+          "openid": {
+            "type": "string",
+            "description": "与原账号一致的 openid。"
+          },
+          "appid": {
+            "type": "string",
+            "enum": [
+              "wxd44977328b36e647"
+            ],
+            "description": "固定的应用宝 AppID。"
+          },
+          "guid": {
+            "type": "string",
+            "description": "本次换发凭据绑定的新 GUID。"
+          },
+          "login_type": {
+            "type": "string",
+            "enum": [
+              "WX"
+            ]
+          },
+          "access_token": {
+            "type": "string",
+            "description": "已保存的新 access token。"
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "已保存的新 refresh token。"
+          },
+          "ck_expires_at": {
+            "type": "string",
+            "description": "上游 OAuth Set-Cookie 中的 Expires 字符串；上游未提供到期时间时省略。",
+            "example": "Wed, 02 Dec 2026 00:00:00 GMT"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "snsapi_login,snsapi_runtime_pcsdk"
+            ]
+          },
+          "userinfo_ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "新 CK 的用户信息正常，且 openid、unionid 与原账号一致。"
+          },
+          "duration": {
+            "type": "string",
+            "example": "8S",
+            "description": "本次请求耗时，使用 H 小时 / M 分钟 / S 秒文本，省略为 0 的单位，整秒截断。最小 1S。"
+          }
+        },
+        "required": [
+          "ok",
+          "ck_updated",
+          "unionid",
+          "openid",
+          "appid",
+          "guid",
+          "login_type",
+          "access_token",
+          "refresh_token",
+          "scope",
+          "userinfo_ok",
+          "duration"
+        ]
+      },
+      "RenewCKErrorResponse": {
+        "type": "object",
+        "description": "换新失败返回。ck_updated=true 表示新 CK 已保存且会保留，可通过 GET /api/users 读取；鉴权失败的 HTTP 401 使用通用 ErrorResponse。",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "ck_updated": {
+            "type": "boolean",
+            "description": "本次新 CK 是否已提交到数据库。即使后续读取保存结果或用户信息校验失败，已提交后该值仍为 true。"
+          },
+          "unionid": {
+            "type": "string",
+            "description": "请求中的账号 unionid；请求未成功解析时可能为空。"
+          },
+          "appid": {
+            "type": "string",
+            "enum": [
+              "wxd44977328b36e647"
+            ]
+          },
+          "userinfo_ok": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "error": {
+            "$ref": "#/components/schemas/RenewCKErrorDetail"
+          },
+          "duration": {
+            "type": "string",
+            "example": "8S",
+            "description": "本次请求耗时，使用 H 小时 / M 分钟 / S 秒文本，省略为 0 的单位，整秒截断。最小 1S。"
+          }
+        },
+        "required": [
+          "ok",
+          "ck_updated",
+          "unionid",
+          "appid",
+          "userinfo_ok",
+          "error",
+          "duration"
+        ]
+      },
+      "RenewCKErrorDetail": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "INVALID_REQUEST",
+              "ACCOUNT_NOT_FOUND",
+              "OLD_SESSION_INVALID",
+              "ACCOUNT_MISMATCH",
+              "QRCONNECT_REJECTED",
+              "CK_SAVE_FAILED",
+              "CK_RENEW_UPSTREAM_ERROR",
+              "CK_VALIDATION_FAILED",
+              "CK_RENEW_TIMEOUT"
+            ]
+          },
+          "stage": {
+            "type": "string",
+            "description": "失败阶段：request、account、scan、authorize、confirm、poll、exchange、save、userinfo 或 renew。",
+            "example": "userinfo"
+          },
+          "message": {
+            "type": "string",
+            "example": "新 CK 已保存，用户信息校验失败"
+          },
+          "wechat_ret": {
+            "type": "integer",
+            "format": "int64",
+            "description": "上游返回的授权或用户信息业务错误码，仅在可获得时提供。"
+          }
+        },
+        "required": [
+          "code",
+          "stage",
+          "message"
         ]
       },
       "CodeRequest": {
